@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The authenticated user's UID" },
+        "displayName": { "type": "string", "description": "The user's display name from Google Sign-In" },
+        "email": { "type": "string", "description": "The user's email from Google Sign-In" },
+        "photoUrl": { "type": "string", "description": "The user's photo URL" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "lastSignInAt": { "type": "string", "format": "date-time", "description": "Last sign-in timestamp" }
+      },
+      "required": ["userId", "email", "createdAt"]
+    },
+    "SavedRecord": {
+      "title": "Saved Land Record",
+      "description": "Metadata for a land record saved to the cloud",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner UID" },
+        "mouzaId": { "type": "string", "description": "Mouza ID" },
+        "mouzaNameBn": { "type": "string", "description": "Mouza name in Bengali" },
+        "mouzaNameEn": { "type": "string", "description": "Mouza name in English" },
+        "jlNo": { "type": "string", "description": "J.L. Number" },
+        "upazilaNameBn": { "type": "string", "description": "Upazila name in Bengali" },
+        "districtNameBn": { "type": "string", "description": "District name in Bengali" },
+        "recordType": { "type": "string", "description": "Record type (CS, SA, RS, etc.)" },
+        "downloadFormat": { "type": "string", "description": "Download format (PDF, IMAGE)" },
+        "khatianCount": { "type": "integer", "description": "Number of khatians" },
+        "fileSizeFormatted": { "type": "string", "description": "Formatted file size" },
+        "downloadedAt": { "type": "string", "format": "date-time", "description": "Timestamp when downloaded" }
+      },
+      "required": ["userId", "mouzaId", "mouzaNameEn", "downloadedAt"]
+    },
+    "DownloadTask": {
+      "title": "Download Task",
+      "description": "Metadata for a download task in the queue",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner UID" },
+        "mouzaId": { "type": "string", "description": "Mouza ID" },
+        "mouzaNameBn": { "type": "string", "description": "Mouza name in Bengali" },
+        "mouzaNameEn": { "type": "string", "description": "Mouza name in English" },
+        "jlNo": { "type": "string", "description": "J.L. Number" },
+        "upazilaNameBn": { "type": "string", "description": "Upazila name in Bengali" },
+        "districtNameBn": { "type": "string", "description": "District name in Bengali" },
+        "recordTypes": { "type": "array", "description": "List of record types", "items": { "type": "string" } },
+        "downloadFormat": { "type": "string", "description": "Download format (PDF, IMAGE)" },
+        "status": { "type": "string", "enum": ["PENDING", "DOWNLOADING", "COMPLETED", "FAILED"], "description": "Task status" },
+        "progress": { "type": "integer", "description": "Progress percentage (0-100)" },
+        "totalKhatians": { "type": "integer", "description": "Total khatians to download" },
+        "downloadedKhatians": { "type": "integer", "description": "Khatians already downloaded" },
+        "fileSizeBytes": { "type": "integer", "description": "Estimated file size in bytes" },
+        "batchNumber": { "type": "integer", "description": "Batch number" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Task creation timestamp" },
+        "referenceId": { "type": "string", "description": "Optional reference ID" }
+      },
+      "required": ["userId", "mouzaId", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/users/{userId}/saved_records/{recordId}": {
+      "schema": "SavedRecord",
+      "description": "User's saved land records"
+    },
+    "/users/{userId}/download_tasks/{taskId}": {
+      "schema": "DownloadTask",
+      "description": "User's download tasks queue"
+    }
+  }
+}

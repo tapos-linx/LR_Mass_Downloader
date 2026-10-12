@@ -19,3 +19,4 @@ debug.keystore
 debug.keystore.base64
 /.build-outputs
 /release-output
+*-debug.log

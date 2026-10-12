@@ -29,3 +29,9 @@ val RoseError = Color(0xFFE11D48)
 val RosePrimary = Color(0xFFF43F5E)
 val RoseDark = Color(0xFF9F1239)
 val RoseContainer = Color(0xFFFFE4E6)
+
+// Logo Branding Colors
+val LogoNavy = Color(0xFF0F172A)
+val LogoTeal = Color(0xFF2DD4BF)
+val LogoMagenta = Color(0xFFBE185D)
+val LogoWhite = Color(0xFFFFFFFF)

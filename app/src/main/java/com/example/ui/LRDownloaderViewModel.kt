@@ -6,6 +6,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.R
 import com.example.data.local.AppDatabase
 import com.example.data.local.LandRecordStorageManager
 import com.example.data.model.District
@@ -21,6 +22,13 @@ import com.example.data.model.Upazila
 import com.example.data.model.UpazilaFetchInfo
 import com.example.data.repository.DownloadRepository
 import com.example.data.worker.DownloadWorkManagerHelper
+import com.example.data.model.FirestoreDownloadTask
+import com.example.data.model.FirestoreSavedRecord
+import com.example.data.repository.FirebaseRepository
+import com.google.firebase.Firebase
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.flow.onStart
 import androidx.work.WorkInfo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -76,6 +84,9 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
 
     private val db = AppDatabase.getDatabase(application)
     private val repository = DownloadRepository(db.savedRecordDao(), db.downloadQueueDao())
+    
+    private val firestoreDb = Firebase.firestore(application.getString(R.string.firestore_database_id))
+    private val firebaseRepository = FirebaseRepository(firestoreDb)
 
     val savedRecords: StateFlow<List<SavedRecord>> = repository.savedRecords
         .stateIn(
@@ -92,6 +103,11 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
     private val taskJobs = mutableMapOf<String, Job>()
 
     init {
+        // Sync user profile on start
+        viewModelScope.launch {
+            firebaseRepository.syncUserProfile()
+        }
+
         // Anti-Freeze Core: Observe WorkManager active state and real-time progress
         DownloadWorkManagerHelper.getPrimaryWorkInfoFlow(application).onEach { workInfo ->
             val isRunning = workInfo?.state == WorkInfo.State.RUNNING || workInfo?.state == WorkInfo.State.ENQUEUED
@@ -137,8 +153,59 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
                 if (persistentQueue.isNotEmpty() && persistentQueue.all { it.status == TaskStatus.COMPLETED }) {
                     checkAndTriggerNextBatch()
                 }
+
+                // Cloud Sync: Update download tasks in Firestore
+                viewModelScope.launch {
+                    persistentQueue.forEach { task ->
+                        firebaseRepository.updateDownloadTask(
+                            FirestoreDownloadTask(
+                                id = task.id,
+                                mouzaId = task.mouzaId,
+                                mouzaNameBn = task.mouzaNameBn,
+                                mouzaNameEn = task.mouzaNameEn,
+                                jlNo = task.jlNo,
+                                upazilaNameBn = task.upazilaNameBn,
+                                districtNameBn = task.districtNameBn,
+                                recordTypes = task.recordTypes.map { it.code },
+                                downloadFormat = task.downloadFormat.name,
+                                status = task.status.name,
+                                progress = task.progress,
+                                totalKhatians = task.totalKhatians,
+                                downloadedKhatians = task.downloadedKhatians,
+                                fileSizeBytes = task.fileSizeBytes,
+                                speedKbps = task.speedKbps,
+                                batchNumber = task.batchNumber,
+                                timestamp = Timestamp(task.timestamp / 1000, ((task.timestamp % 1000) * 1000000).toInt()),
+                                referenceId = task.referenceId
+                            )
+                        )
+                    }
+                }
             }.launchIn(viewModelScope)
         }
+
+        // Cloud Sync: Observe saved records and update Firestore
+        repository.savedRecords.onEach { records ->
+            viewModelScope.launch {
+                records.forEach { record ->
+                    firebaseRepository.saveRecord(
+                        FirestoreSavedRecord(
+                            id = record.id,
+                            mouzaId = record.mouzaId,
+                            mouzaNameBn = record.mouzaNameBn,
+                            mouzaNameEn = record.mouzaNameEn,
+                            jlNo = record.jlNo,
+                            upazilaNameBn = record.upazilaNameBn,
+                            districtNameBn = record.districtNameBn,
+                            recordType = record.recordType,
+                            khatianCount = record.khatianCount,
+                            fileSizeFormatted = record.fileSizeFormatted,
+                            downloadedAt = Timestamp(record.downloadedAt / 1000, ((record.downloadedAt % 1000) * 1000000).toInt())
+                        )
+                    )
+                }
+            }
+        }.launchIn(viewModelScope)
     }
 
     val allDistricts: List<District> = LandRecordsDataset.districts

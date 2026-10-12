@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "LR Mass Downloader"
+rootProject.name = "LR get BD"
 
 include(":app")

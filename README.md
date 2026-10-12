@@ -1,4 +1,4 @@
-# 📜 LR Mass Downloader (ভূমি রেকর্ড ও জরিপ গণ-ডাউনলোডার)
+# 📜 LR get BD (ভূমি রেকর্ড ও জরিপ গণ-ডাউনলোডার)
 
 [![Android Version](https://img.shields.io/badge/Android-7.0%2B%20(API%2024%2B)-047857?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20MD3-064E3B?style=for-the-badge&logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)

@@ -35,8 +35,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Image
+import com.example.ui.theme.*
 import com.example.data.model.DownloadFormat
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -75,6 +77,7 @@ import androidx.compose.material.icons.filled.GetApp
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -235,7 +238,15 @@ fun LRMassDownloaderScreen(
                     .background(Slate50),
                 topBar = {
                     GovTechHeader(
-                        onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) }
+                        onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) },
+                        onLogout = {
+                            signOut(
+                                context = context,
+                                credentialManager = androidx.credentials.CredentialManager.create(context),
+                                onSignOutComplete = { /* MainActivity handles state via AuthStateListener */ },
+                                scope = kotlinx.coroutines.MainScope()
+                            )
+                        }
                     )
                 },
                 bottomBar = {
@@ -1121,7 +1132,8 @@ fun GovTechHeader(
     onOpenKhotiyanForm: () -> Unit = {},
     onOpenQueueStatus: () -> Unit = {},
     onOpenSavedRecords: () -> Unit = {},
-    onOpenApkInfo: () -> Unit
+    onOpenApkInfo: () -> Unit,
+    onLogout: () -> Unit
 ) {
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     Surface(
@@ -1145,18 +1157,40 @@ fun GovTechHeader(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(54.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(EmeraldDark)
-                            .border(1.dp, EmeraldLight.copy(alpha = 0.4f), RoundedCornerShape(14.dp)),
+                            .background(LogoNavy),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Description,
-                            contentDescription = "Land Records Seal",
-                            tint = AmberAccent,
-                            modifier = Modifier.size(26.dp)
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "LR",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 16.sp,
+                                    color = LogoWhite
+                                ),
+                                modifier = Modifier.offset(y = 2.dp)
+                            )
+                            Text(
+                                text = "get",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 8.sp,
+                                    color = LogoTeal
+                                ),
+                                modifier = Modifier.offset(y = (-2).dp)
+                            )
+                            Text(
+                                text = "BD",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 10.sp,
+                                    color = LogoMagenta
+                                ),
+                                modifier = Modifier.offset(y = (-4).dp)
+                            )
+                        }
                     }
 
                     Column {
@@ -1179,10 +1213,10 @@ fun GovTechHeader(
                             )
                         }
                         Text(
-                            text = "LR Mass Downloader",
+                            text = "LR get BD",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp
+                                fontSize = 20.sp
                             ),
                             color = Color.White
                         )
@@ -1218,6 +1252,22 @@ fun GovTechHeader(
                         Text(
                             text = "Download APK",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onLogout,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.1f))
+                            .testTag("logout_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Logout,
+                            contentDescription = "Logout",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -1292,7 +1342,7 @@ fun ApkDownloadDialog(
     fun downloadApkToLocalStorage(): File? {
         return try {
             val apkFile = getLocalApkFile()
-            val fileName = "LR Mass Downloader.apk"
+            val fileName = "LR get BD.apk"
             val altFileName = "LRMassDownloader.apk"
             val mimeType = "application/vnd.android.package-archive"
             var savedPath = ""
@@ -1670,13 +1720,13 @@ fun ApkDownloadDialog(
                     try {
                         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                         val request = DownloadManager.Request(Uri.parse(downloadUrl))
-                            .setTitle("LR Mass Downloader.apk")
+                            .setTitle("LR get BD.apk")
                             .setDescription("Downloading LR Mass Downloader APK directly...")
                             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "LR Mass Downloader.apk")
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "LR get BD.apk")
                             .setMimeType("application/vnd.android.package-archive")
                         dm.enqueue(request)
-                        Toast.makeText(context, "📥 ডাউনলোড শুরু হয়েছে: Download/LR Mass Downloader.apk", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "📥 ডাউনলোড শুরু হয়েছে: Download/LR get BD.apk", Toast.LENGTH_SHORT).show()
                     } catch (ignored: Exception) {}
 
                     try {
