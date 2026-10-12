@@ -20,6 +20,15 @@ object DownloadWorkManagerHelper {
     const val TAG_ANTI_FREEZE = "anti_freeze_downloader"
     const val KEY_AUTO_BATCH_MODE = "key_auto_batch_mode"
 
+    // Progress Data Keys for WorkInfo.progress observation
+    const val KEY_PROGRESS_PERCENT = "key_progress_percent"
+    const val KEY_ITEM_PROGRESS = "key_item_progress"
+    const val KEY_ACTIVE_TASK_NAME = "key_active_task_name"
+    const val KEY_COMPLETED_TASKS = "key_completed_tasks"
+    const val KEY_TOTAL_TASKS = "key_total_tasks"
+    const val KEY_SPEED_KBPS = "key_speed_kbps"
+    const val KEY_STATUS_MESSAGE = "key_status_message"
+
     /**
      * Enqueues the WorkManager download worker with foreground execution support.
      * Uses ExistingWorkPolicy.KEEP by default to avoid duplicate jobs,
@@ -93,6 +102,21 @@ object DownloadWorkManagerHelper {
                 .getWorkInfosForUniqueWorkFlow(UNIQUE_WORK_NAME)
         } catch (e: Exception) {
             kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+    }
+
+    /**
+     * Observes the primary WorkInfo instance for real-time progress feedback.
+     */
+    fun getPrimaryWorkInfoFlow(context: Context): Flow<WorkInfo?> {
+        return try {
+            WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWorkFlow(UNIQUE_WORK_NAME)
+                .map { list ->
+                    list.firstOrNull { it.tags.contains(TAG_ANTI_FREEZE) } ?: list.firstOrNull()
+                }
+        } catch (e: Exception) {
+            kotlinx.coroutines.flow.flowOf(null)
         }
     }
 }

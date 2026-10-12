@@ -57,6 +57,13 @@ class DownloadQueueWorker(
                     isIndeterminate = true
                 )
             )
+            setProgress(
+                androidx.work.workDataOf(
+                    DownloadWorkManagerHelper.KEY_PROGRESS_PERCENT to 0,
+                    DownloadWorkManagerHelper.KEY_ACTIVE_TASK_NAME to "Initializing Queue...",
+                    DownloadWorkManagerHelper.KEY_STATUS_MESSAGE to "Preparing anti-blocking background download queue..."
+                )
+            )
         } catch (e: Exception) {
             // Notification permission might be pending on Android 13+; continue background work safely
         }
@@ -171,6 +178,26 @@ class DownloadQueueWorker(
                         status = if (progress >= 100) TaskStatus.COMPLETED else TaskStatus.DOWNLOADING
                     )
                 )
+
+                // Publish real-time WorkManager progress to WorkInfo for observers
+                try {
+                    val allTasks = queueDao.getAllTasksDirect()
+                    val completedCount = allTasks.count { it.status == TaskStatus.COMPLETED }
+                    val totalTasksCount = allTasks.size.coerceAtLeast(1)
+                    val overallPercent = (((completedCount * 100) + progress) / totalTasksCount).coerceIn(0, 100)
+
+                    setProgress(
+                        androidx.work.workDataOf(
+                            DownloadWorkManagerHelper.KEY_PROGRESS_PERCENT to overallPercent,
+                            DownloadWorkManagerHelper.KEY_ITEM_PROGRESS to progress,
+                            DownloadWorkManagerHelper.KEY_ACTIVE_TASK_NAME to (task.referenceId?.let { "Ref #$it (${task.mouzaNameBn})" } ?: task.mouzaNameBn),
+                            DownloadWorkManagerHelper.KEY_COMPLETED_TASKS to completedCount,
+                            DownloadWorkManagerHelper.KEY_TOTAL_TASKS to totalTasksCount,
+                            DownloadWorkManagerHelper.KEY_SPEED_KBPS to speed,
+                            DownloadWorkManagerHelper.KEY_STATUS_MESSAGE to "Downloading ${task.mouzaNameBn} ($progress%)"
+                        )
+                    )
+                } catch (ignored: Exception) {}
 
                 // Update notification with live progress & anti-blocking rate
                 try {

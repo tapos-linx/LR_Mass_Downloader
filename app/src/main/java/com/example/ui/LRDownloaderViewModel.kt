@@ -20,6 +20,7 @@ import com.example.data.model.Upazila
 import com.example.data.model.UpazilaFetchInfo
 import com.example.data.repository.DownloadRepository
 import com.example.data.worker.DownloadWorkManagerHelper
+import androidx.work.WorkInfo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,6 +64,7 @@ data class LRUiState(
     val isShowingApkInfoDialog: Boolean = false,
     val cacheNotificationMessage: String? = null,
     val isWorkManagerActive: Boolean = false,
+    val activeWorkInfo: WorkInfo? = null,
     val useWorkManagerBackgroundService: Boolean = true,
     val antiBlockingDelayDescription: String = "400ms – 2,400ms Randomized Jitter",
     val currentScreen: AppScreen = AppScreen.DOWNLOADER
@@ -88,9 +90,13 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
     private val taskJobs = mutableMapOf<String, Job>()
 
     init {
-        // Anti-Freeze Core: Observe WorkManager active state
-        DownloadWorkManagerHelper.isWorkRunningFlow(application).onEach { isRunning ->
-            _uiState.value = _uiState.value.copy(isWorkManagerActive = isRunning)
+        // Anti-Freeze Core: Observe WorkManager active state and real-time progress
+        DownloadWorkManagerHelper.getPrimaryWorkInfoFlow(application).onEach { workInfo ->
+            val isRunning = workInfo?.state == WorkInfo.State.RUNNING || workInfo?.state == WorkInfo.State.ENQUEUED
+            _uiState.value = _uiState.value.copy(
+                activeWorkInfo = workInfo,
+                isWorkManagerActive = isRunning
+            )
         }.launchIn(viewModelScope)
 
         // Anti-Freeze Core: Persistent Queue Sync & Task Resumption
