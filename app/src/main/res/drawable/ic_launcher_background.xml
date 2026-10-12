@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#064E3B" />
+                <item android:offset="1.0" android:color="#047857" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Land Survey grid lines -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M18,0L18,108 M36,0L36,108 M54,0L54,108 M72,0L72,108 M90,0L90,108"
+        android:strokeWidth="0.75"
+        android:strokeColor="#22FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,18L108,18 M0,36L108,36 M0,54L108,54 M0,72L108,72 M0,90L108,90"
+        android:strokeWidth="0.75"
+        android:strokeColor="#22FFFFFF" />
+    <!-- Contour survey curves -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,70 Q40,50 80,75 T108,60"
+        android:strokeWidth="1"
+        android:strokeColor="#18FFFFFF" />
+</vector>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="20"
+        android:translateY="18">
+        <!-- Main Document Body -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M14,6 C10.7,6 8,8.7 8,12 L8,60 C8,63.3 10.7,66 14,66 L54,66 C57.3,66 60,63.3 60,60 L60,22 L44,6 L14,6 Z" />
+        <!-- Folded Corner -->
+        <path
+            android:fillColor="#E2E8F0"
+            android:pathData="M44,6 L60,22 L44,22 Z" />
+        <!-- GovTech Seal Emblem (Golden Sun) -->
+        <path
+            android:fillColor="#F59E0B"
+            android:pathData="M24,20 A5,5 0 1,1 24,19.99 Z" />
+        <!-- Record Lines -->
+        <path
+            android:fillColor="#047857"
+            android:pathData="M33,18 L50,18 A1.5,1.5 0 0,0 50,15 L33,15 A1.5,1.5 0 0,0 33,18 Z" />
+        <path
+            android:fillColor="#94A3B8"
+            android:pathData="M16,28 L52,28 A1.5,1.5 0 0,0 52,25 L16,25 A1.5,1.5 0 0,0 16,28 Z" />
+        <path
+            android:fillColor="#94A3B8"
+            android:pathData="M16,36 L52,36 A1.5,1.5 0 0,0 52,33 L16,33 A1.5,1.5 0 0,0 16,36 Z" />
+        <!-- Download Circle Badge -->
+        <path
+            android:fillColor="#047857"
+            android:pathData="M46,50 A16,16 0 1,1 46,49.99 Z" />
+        <!-- Download Arrow -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M46,40 L46,54 M40,48 L46,54 L52,48 M39,57 L53,57"
+            android:strokeWidth="2.5"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

@@ -1,0 +1,6 @@
+{
+  "name": "LR Mass Downloader",
+  "description": "Specialized land record mass downloader for Bangladesh Land Records (Cumilla and Brahmanbaria) with MD3 GovTech interface and anti-freeze queue.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

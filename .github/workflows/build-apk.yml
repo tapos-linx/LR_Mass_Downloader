@@ -1,0 +1,128 @@
+name: Build & Release Android APK (Auto Versioning)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Auto-Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Dynamic App Version
+        id: versioning
+        run: |
+          RUN_NUM="${{ github.run_number }}"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RAW_TAG="${{ github.ref_name }}"
+            VER_NAME="${RAW_TAG#v}"
+            VER_CODE="${RUN_NUM}"
+            VER_TAG="${RAW_TAG}"
+          else
+            VER_NAME="1.0.${RUN_NUM}"
+            VER_CODE="${RUN_NUM}"
+            VER_TAG="v1.0.${RUN_NUM}"
+          fi
+          echo "VERSION_NAME=${VER_NAME}" >> $GITHUB_ENV
+          echo "VERSION_CODE=${VER_CODE}" >> $GITHUB_ENV
+          echo "VERSION_TAG=${VER_TAG}" >> $GITHUB_ENV
+          echo "tag=${VER_TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VER_NAME}" >> $GITHUB_OUTPUT
+          echo "build=${VER_CODE}" >> $GITHUB_OUTPUT
+          echo "Generated Version: ${VER_NAME} (Build ${VER_CODE}, Tag ${VER_TAG})"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Create debug.keystore if missing
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Grant Execute Permission to Gradle
+        run: chmod +x gradlew || true
+
+      - name: Build Debug APK with Gradle (Version ${{ env.VERSION_NAME }})
+        env:
+          VERSION_CODE: ${{ env.VERSION_CODE }}
+          VERSION_NAME: ${{ env.VERSION_NAME }}
+        run: |
+          ./gradlew assembleDebug --stacktrace || gradle assembleDebug --stacktrace
+
+      - name: Prepare APK Release Assets
+        run: |
+          mkdir -p release-output
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/LRMassDownloader.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/LRMassDownloader-${{ env.VERSION_TAG }}.apk
+          ls -lh release-output/
+
+      - name: Upload APK Artifact to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: LRMassDownloader-${{ env.VERSION_TAG }}-APK
+          path: release-output/LRMassDownloader.apk
+          retention-days: 90
+
+      - name: Publish GitHub Release (One-Click Download & Latest)
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          tag_name: ${{ env.VERSION_TAG }}
+          name: "LR Mass Downloader ${{ env.VERSION_TAG }} (Build ${{ env.VERSION_CODE }})"
+          make_latest: true
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ### 📜 LR Mass Downloader - Automated Release ${{ env.VERSION_TAG }}
+            
+            #### 🚀 One-Click APK Direct Download Links:
+            - 👉 [**Download LRMassDownloader.apk (Always Latest)**](https://github.com/${{ github.repository }}/releases/latest/download/LRMassDownloader.apk)
+            - 📦 [Download LRMassDownloader-${{ env.VERSION_TAG }}.apk](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION_TAG }}/LRMassDownloader-${{ env.VERSION_TAG }}.apk)
+            
+            ---
+            
+            #### 📊 Build & Version Information:
+            - **Version Name:** `${{ env.VERSION_NAME }}`
+            - **Version Code (Build):** `${{ env.VERSION_CODE }}`
+            - **Git Commit:** `${{ github.sha }}`
+            - **Target:** Bangladesh Land Records & Survey (DLR&S)
+            
+            #### ⚡ Fast 1-2 Second Installation Note:
+            When prompted by Android / Google Play Protect (*"Unrecognized app"*), tap **"Install anyway"** to bypass cloud deep-scanning and install in **1–2 seconds**.
+            
+            #### ✨ Key Capabilities:
+            - **Complete Dataset**: Cumilla (17 Upazilas) & Brahmanbaria (9 Upazilas)
+            - **Cascading Hierarchy**: District ➔ Upazila ➔ Mouza
+            - **Automated 7-Mouza Sequential Queue**: Anti-repeat algorithm prevents duplicate downloads
+            - **One-Click All Document Types**: CS, SA, RS, BRS/BS
+            - **Master Archive Synthesis**: Consolidated JSON, human-readable TXT ledger, CSV table
+            - **Phone Storage Integration**: Saved to `Download/LandRecords/` with automatic MediaScanner indexing
+            - **Automatic Cache Cleanup**: Clears temporary memory post-export
+          files: |
+            release-output/LRMassDownloader.apk
+            release-output/LRMassDownloader-${{ env.VERSION_TAG }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
