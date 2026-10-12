@@ -39,6 +39,11 @@ enum class TaskStatus {
     FAILED
 }
 
+enum class DownloadFormat(val label: String) {
+    PDF("PDF Document"),
+    IMAGE("Image (JPEG)")
+}
+
 @Entity(tableName = "download_queue")
 data class DownloadTask(
     @PrimaryKey val id: String,
@@ -49,6 +54,7 @@ data class DownloadTask(
     val upazilaNameBn: String,
     val districtNameBn: String,
     val recordTypes: Set<RecordType>,
+    val downloadFormat: DownloadFormat = DownloadFormat.PDF,
     val status: TaskStatus = TaskStatus.PENDING,
     val progress: Int = 0, // 0..100
     val totalKhatians: Int = 50,
@@ -65,6 +71,9 @@ data class DownloadTask(
         } else {
             recordTypes.joinToString("+") { it.code }
         }
+    
+    val formatLabel: String
+        get() = downloadFormat.label
 }
 
 @Entity(tableName = "saved_land_records")

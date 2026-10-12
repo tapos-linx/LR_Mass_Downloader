@@ -33,7 +33,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Image
+import com.example.data.model.DownloadFormat
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -188,6 +192,16 @@ fun LRMassDownloaderScreen(
         uiState.queue.sumOf { it.progress } / totalTasks
     }
 
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.downloadMasterFileToPhone(context)
+        } else {
+            Toast.makeText(context, "Storage permission is required to save records to Downloads directory.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     // Storage Access Framework (SAF) document creator allowing user to save copy anywhere
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/plain")
@@ -324,7 +338,11 @@ fun LRMassDownloaderScreen(
                     MasterArchiveCard(
                         archive = archive,
                         onDownloadToPhone = {
-                            viewModel.downloadMasterFileToPhone(context)
+                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                                storagePermissionLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            } else {
+                                viewModel.downloadMasterFileToPhone(context)
+                            }
                         },
                         onOpenDownloadsFolder = {
                             viewModel.openDownloadsFolder(context)
@@ -353,7 +371,9 @@ fun LRMassDownloaderScreen(
                     onUpazilaSelected = { viewModel.onUpazilaChanged(it) },
                     selectedRecordTypes = uiState.selectedRecordTypes,
                     onToggleRecordType = { viewModel.toggleRecordType(it) },
-                    onSelectAllRecordTypes = { viewModel.selectAllRecordTypes() }
+                    onSelectAllRecordTypes = { viewModel.selectAllRecordTypes() },
+                    selectedDownloadFormat = uiState.selectedDownloadFormat,
+                    onDownloadFormatSelected = { viewModel.setDownloadFormat(it) }
                 )
             }
 
@@ -1695,7 +1715,9 @@ fun CascadingHierarchyCard(
     onUpazilaSelected: (String?) -> Unit,
     selectedRecordTypes: Set<RecordType>,
     onToggleRecordType: (RecordType) -> Unit,
-    onSelectAllRecordTypes: () -> Unit
+    onSelectAllRecordTypes: () -> Unit,
+    selectedDownloadFormat: DownloadFormat,
+    onDownloadFormatSelected: (DownloadFormat) -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -1946,6 +1968,56 @@ fun CascadingHierarchyCard(
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                     color = if (isSelected) EmeraldContainer else Slate500,
                                     maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Download Format Selection (PDF or Image)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "৪. ডাউনলোড ফরম্যাট নির্বাচন (Download Format)",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Slate600
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    DownloadFormat.values().forEach { format ->
+                        val isSelected = selectedDownloadFormat == format
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isSelected) BlueAccent else Slate100)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) BlueAccent.copy(alpha = 0.8f) else Slate200,
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable { onDownloadFormatSelected(format) }
+                                .padding(vertical = 12.dp, horizontal = 8.dp)
+                                .testTag("download_format_${format.name.lowercase()}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (format == DownloadFormat.PDF) Icons.Default.PictureAsPdf else Icons.Default.Image,
+                                    contentDescription = null,
+                                    tint = if (isSelected) Color.White else Slate500,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = format.label,
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
+                                    color = if (isSelected) Color.White else Slate700
                                 )
                             }
                         }

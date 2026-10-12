@@ -168,6 +168,7 @@ object LandRecordStorageManager {
   },
   "referenceId": "${task.referenceId ?: "N/A"}",
   "recordType": "${task.recordTypeLabel}",
+  "downloadFormat": "${task.downloadFormat.name}",
   "totalKhatians": ${task.totalKhatians},
   "fileSizeBytes": ${task.fileSizeBytes},
   "downloadTimestamp": ${task.timestamp},
@@ -175,6 +176,18 @@ object LandRecordStorageManager {
   "storageFolder": "Download/LandRecords/"
 }
 """.trimIndent()
+
+        // Save simulated record file based on format (PDF or IMAGE)
+        val formatExt = if (task.downloadFormat == com.example.data.model.DownloadFormat.PDF) ".pdf" else ".jpg"
+        val formatMime = if (task.downloadFormat == com.example.data.model.DownloadFormat.PDF) "application/pdf" else "image/jpeg"
+        val recordFileName = "${upazila.nameEn}_${safeMouzaName}${refSuffix}_Official_Record$formatExt"
+        val simulatedContent = "--- SIMULATED ${task.downloadFormat.name} LAND RECORD ---\n" +
+                "This is a simulated ${task.downloadFormat.label} file for ${task.mouzaNameEn} Mouza.\n" +
+                "Source: Bangladesh Digital Land Records Portal.\n" +
+                "Record Type: ${task.recordTypeLabel}\n" +
+                "Khatian Count: ${task.totalKhatians}\n"
+        
+        saveFileToLandRecords(context, recordFileName, simulatedContent, formatMime)
 
         // Also save readable text ledger for the mouza
         val textFileName = "${upazila.nameEn}_${safeMouzaName}_JL${task.jlNo}_${safeRecordType}.txt"
@@ -188,6 +201,7 @@ object LandRecordStorageManager {
 মৌজা: ${task.mouzaNameBn} (${task.mouzaNameEn})
 জে.এল নং: ${task.jlNo}
 জরিপ রেকর্ড ধরন: ${task.recordTypeLabel}
+ডাউনলোড ফরম্যাট: ${task.downloadFormat.label}
 মোট খতিয়ান সংখ্যা: ${task.totalKhatians} টি
 সংরক্ষণ সময়: ${task.timestamp}
 অবস্থান: ফোন মেমোরি / Download / LandRecords /

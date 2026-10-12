@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
 import com.example.data.local.LandRecordStorageManager
 import com.example.data.model.District
+import com.example.data.model.DownloadFormat
 import com.example.data.model.DownloadTask
 import com.example.data.model.LandRecordsDataset
 import com.example.data.model.MasterArchive
@@ -51,6 +52,7 @@ data class LRUiState(
     val selectedMouzaIds: Set<String> = emptySet(),
     val downloadedMouzaIds: Set<String> = emptySet(),
     val selectedRecordTypes: Set<RecordType> = setOf(RecordType.RS),
+    val selectedDownloadFormat: DownloadFormat = DownloadFormat.PDF,
     val searchQuery: String = "",
     val queue: List<DownloadTask> = emptyList(),
     val isPaused: Boolean = false,
@@ -241,6 +243,10 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
         _uiState.value = _uiState.value.copy(selectedRecordTypes = newSet)
     }
 
+    fun setDownloadFormat(format: DownloadFormat) {
+        _uiState.value = _uiState.value.copy(selectedDownloadFormat = format)
+    }
+
     fun selectAllRecordTypes() {
         _uiState.value = _uiState.value.copy(
             selectedRecordTypes = RecordType.values().toSet()
@@ -326,6 +332,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             upazilaNameBn = upazila.nameBn,
             districtNameBn = district.nameBn,
             recordTypes = recordTypes.ifEmpty { setOf(RecordType.RS) },
+            downloadFormat = _uiState.value.selectedDownloadFormat,
             status = TaskStatus.PENDING,
             progress = 0,
             totalKhatians = count,
@@ -376,6 +383,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
                 upazilaNameBn = upazila.nameBn,
                 districtNameBn = district.nameBn,
                 recordTypes = effectiveRecordTypes,
+                downloadFormat = _uiState.value.selectedDownloadFormat,
                 status = TaskStatus.PENDING,
                 progress = 0,
                 totalKhatians = 1 * effectiveRecordTypes.size,
@@ -449,6 +457,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
     ) {
         val timestamp = System.currentTimeMillis()
         val recordTypes = _uiState.value.selectedRecordTypes
+        val format = _uiState.value.selectedDownloadFormat
 
         val newTasks = mouzasToQueue.mapIndexed { index, mouza ->
             val taskId = "${mouza.id}-${batchNum}-$timestamp-$index"
@@ -464,6 +473,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
                 upazilaNameBn = upazila.nameBn,
                 districtNameBn = district.nameBn,
                 recordTypes = recordTypes,
+                downloadFormat = format,
                 status = TaskStatus.PENDING,
                 progress = 0,
                 totalKhatians = totalKhatians,
