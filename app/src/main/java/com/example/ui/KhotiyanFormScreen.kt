@@ -234,18 +234,6 @@ fun KhotiyanFormScreen(
                 tonalElevation = 4.dp
             ) {
                 NavigationBarItem(
-                    selected = true,
-                    onClick = { /* already on form */ },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Assignment,
-                            contentDescription = "Multi-Step Form"
-                        )
-                    },
-                    label = { Text("Khotiyan Form", fontWeight = FontWeight.Bold) },
-                    modifier = Modifier.testTag("nav_item_khotiyan_form")
-                )
-                NavigationBarItem(
                     selected = false,
                     onClick = { viewModel.navigateToScreen(AppScreen.DOWNLOADER) },
                     icon = {
@@ -457,22 +445,53 @@ fun KhotiyanFormScreen(
                             onPrevious = { currentStep = 3 },
                             onQueueDownload = {
                                 if (currentDistrict != null && currentUpazila != null && currentMouza != null) {
-                                    val (label, count) = getKhotiyanLabelAndCount(
+                                    val (label, _) = getKhotiyanLabelAndCount(
                                         inputMode, singleKhotiyanText, rangeStartText, rangeEndText, customListText
                                     )
-                                    viewModel.queueSpecificKhotiyanDownload(
-                                        district = currentDistrict,
-                                        upazila = currentUpazila,
-                                        mouza = currentMouza,
-                                        khotiyanLabel = label,
-                                        recordTypes = selectedRecordTypes,
-                                        totalKhatians = count
-                                    )
-                                    Toast.makeText(
-                                        context,
-                                        "✅ ${currentMouza.nameBn} ($label) ডাউনলোড কিউ-তে যুক্ত হয়েছে!",
-                                        Toast.LENGTH_LONG
-                                    ).show()
+                                    val referenceIds = when (inputMode) {
+                                        KhotiyanInputMode.SINGLE -> {
+                                            if (singleKhotiyanText.isNotBlank()) listOf(singleKhotiyanText.trim()) else emptyList()
+                                        }
+                                        KhotiyanInputMode.RANGE -> {
+                                            val start = rangeStartText.trim().toIntOrNull() ?: 1
+                                            val end = rangeEndText.trim().toIntOrNull() ?: start
+                                            val range = if (start <= end) start..end.coerceAtMost(start + 100) else start..start
+                                            range.map { it.toString() }
+                                        }
+                                        KhotiyanInputMode.CUSTOM_LIST -> {
+                                            LRDownloaderViewModel.parseReferenceIds(customListText)
+                                        }
+                                        else -> emptyList()
+                                    }
+
+                                    if (referenceIds.isNotEmpty()) {
+                                        viewModel.queueReferenceIdsDownload(
+                                            district = currentDistrict,
+                                            upazila = currentUpazila,
+                                            mouza = currentMouza,
+                                            referenceIds = referenceIds,
+                                            recordTypes = selectedRecordTypes
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            "✅ ${referenceIds.size}টি ল্যান্ড রেকর্ড রেফারেন্স আইডি WorkManager কিউ-তে যুক্ত হয়েছে (ক্রমানুসারে ডাউনলোড হবে)!",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    } else {
+                                        viewModel.queueSpecificKhotiyanDownload(
+                                            district = currentDistrict,
+                                            upazila = currentUpazila,
+                                            mouza = currentMouza,
+                                            khotiyanLabel = label,
+                                            recordTypes = selectedRecordTypes,
+                                            totalKhatians = 1
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            "✅ ${currentMouza.nameBn} ($label) ডাউনলোড কিউ-তে যুক্ত হয়েছে!",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
                                     // Reset to step 1 or stay on review with fresh queue indicators
                                     currentStep = 1
                                 }

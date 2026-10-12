@@ -140,4 +140,59 @@ class ExampleRobolectricTest {
         viewModel.navigateToScreen(AppScreen.DOWNLOADER)
         assertEquals(AppScreen.DOWNLOADER, viewModel.uiState.value.currentScreen)
     }
+
+    @Test
+    fun testParseReferenceIdsFlexibleInput() {
+        // 1. Comma, space, and newline separated input
+        val input1 = "101, 102, 103\n104  105; 106"
+        val parsed1 = LRDownloaderViewModel.parseReferenceIds(input1)
+        assertEquals(listOf("101", "102", "103", "104", "105", "106"), parsed1)
+
+        // 2. Range expansion (e.g. 50-54)
+        val input2 = "50-54, 88"
+        val parsed2 = LRDownloaderViewModel.parseReferenceIds(input2)
+        assertEquals(listOf("50", "51", "52", "53", "54", "88"), parsed2)
+
+        // 3. Alphanumeric reference IDs with duplicates
+        val input3 = "LR-2024-001, LR-2024-002, LR-2024-001"
+        val parsed3 = LRDownloaderViewModel.parseReferenceIds(input3)
+        assertEquals(listOf("LR-2024-001", "LR-2024-002"), parsed3)
+
+        // 4. Empty and blank input
+        val parsed4 = LRDownloaderViewModel.parseReferenceIds("   ")
+        assertTrue(parsed4.isEmpty())
+    }
+
+    @Test
+    fun testSequentialReferenceIdsWorkManagerQueueing() = runTest {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val viewModel = LRDownloaderViewModel(app)
+
+        val district = LandRecordsDataset.districts.first()
+        val upazila = district.upazilas.first()
+        val mouza = upazila.mouzas.first()
+
+        val referenceIds = listOf("REF-101", "REF-102", "REF-103", "REF-104")
+        val recordTypes = setOf(RecordType.RS)
+
+        viewModel.queueReferenceIdsDownload(
+            district = district,
+            upazila = upazila,
+            mouza = mouza,
+            referenceIds = referenceIds,
+            recordTypes = recordTypes
+        )
+        ShadowLooper.idleMainLooper()
+
+        val queue = viewModel.uiState.value.queue
+        assertEquals(4, queue.size)
+
+        // Verify each task has its unique reference ID and sequential PENDING state
+        for (i in referenceIds.indices) {
+            val task = queue[i]
+            assertEquals(referenceIds[i], task.referenceId)
+            assertTrue(task.mouzaNameBn.contains(referenceIds[i]))
+            assertEquals(com.example.data.model.TaskStatus.PENDING, task.status)
+        }
+    }
 }

@@ -340,6 +340,101 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    /**
+     * Queues a user-entered list of specific land record reference IDs
+     * to be downloaded sequentially via WorkManager in the background.
+     */
+    fun queueReferenceIdsDownload(
+        district: District,
+        upazila: Upazila,
+        mouza: Mouza,
+        referenceIds: List<String>,
+        recordTypes: Set<RecordType>
+    ) {
+        if (referenceIds.isEmpty()) return
+        val timestamp = System.currentTimeMillis()
+        val currentBatch = _uiState.value.currentBatchNumber
+        val effectiveRecordTypes = recordTypes.ifEmpty { setOf(RecordType.RS) }
+
+        val newTasks = referenceIds.mapIndexed { index, refId ->
+            val cleanId = refId.trim()
+            val taskId = "ref-${mouza.id}-$cleanId-$timestamp-$index"
+            val fileSizeBytes = 95000L * effectiveRecordTypes.size
+
+            DownloadTask(
+                id = taskId,
+                mouzaId = mouza.id,
+                mouzaNameBn = "${mouza.nameBn} [রেফারেন্স: $cleanId]",
+                mouzaNameEn = "${mouza.nameEn} [Ref: $cleanId]",
+                jlNo = mouza.jlNo,
+                upazilaNameBn = upazila.nameBn,
+                districtNameBn = district.nameBn,
+                recordTypes = effectiveRecordTypes,
+                status = TaskStatus.PENDING,
+                progress = 0,
+                totalKhatians = 1 * effectiveRecordTypes.size,
+                downloadedKhatians = 0,
+                fileSizeBytes = fileSizeBytes,
+                speedKbps = 0,
+                batchNumber = currentBatch,
+                timestamp = timestamp + index,
+                referenceId = cleanId
+            )
+        }
+
+        val updatedQueue = _uiState.value.queue + newTasks
+        _uiState.value = _uiState.value.copy(queue = updatedQueue)
+
+        viewModelScope.launch {
+            repository.insertTasksToQueue(newTasks)
+            if (_uiState.value.useWorkManagerBackgroundService && !_uiState.value.isPaused) {
+                DownloadWorkManagerHelper.enqueueDownloadWork(
+                    context = getApplication(),
+                    replace = true,
+                    autoBatchMode = _uiState.value.isAutoBatchMode
+                )
+            } else if (!_uiState.value.isPaused) {
+                newTasks.forEach { task ->
+                    if (!taskJobs.containsKey(task.id)) {
+                        launchTaskWorker(task.id)
+                    }
+                }
+            }
+        }
+    }
+
+    companion object {
+        /**
+         * Parses and extracts land record reference IDs from flexible text input.
+         * Supports comma, newline, space, semicolon separation, as well as ranges like 101-105.
+         */
+        fun parseReferenceIds(input: String): List<String> {
+            if (input.isBlank()) return emptyList()
+            val rawTokens = input.split(',', '\n', ';', ' ', '\t')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+
+            val results = mutableListOf<String>()
+            for (token in rawTokens) {
+                if (token.contains('-') && token.matches(Regex("""^\d+\s*-\s*\d+$"""))) {
+                    val parts = token.split('-').map { it.trim().toIntOrNull() }
+                    if (parts.size == 2 && parts[0] != null && parts[1] != null) {
+                        val start = parts[0]!!
+                        val end = parts[1]!!
+                        if (start <= end && (end - start) <= 100) {
+                            for (i in start..end) {
+                                results.add(i.toString())
+                            }
+                            continue
+                        }
+                    }
+                }
+                results.add(token)
+            }
+            return results.distinct()
+        }
+    }
+
     private fun enqueueBatch(
         mouzasToQueue: List<Mouza>,
         district: District,

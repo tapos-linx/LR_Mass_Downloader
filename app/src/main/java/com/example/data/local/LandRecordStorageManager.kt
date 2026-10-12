@@ -152,7 +152,8 @@ object LandRecordStorageManager {
     ): SavedFileResult {
         val safeMouzaName = task.mouzaNameEn.replace("[^a-zA-Z0-9]".toRegex(), "_")
         val safeRecordType = task.recordTypeLabel.replace("[^a-zA-Z0-9]".toRegex(), "_")
-        val jsonFileName = "${upazila.nameEn}_${safeMouzaName}_JL${task.jlNo}_${safeRecordType}.json"
+        val refSuffix = if (task.referenceId != null) "_Ref_${task.referenceId.replace("[^a-zA-Z0-9]".toRegex(), "_")}" else ""
+        val jsonFileName = "${upazila.nameEn}_${safeMouzaName}${refSuffix}_JL${task.jlNo}_${safeRecordType}.json"
 
         val jsonContent = """
 {
@@ -165,6 +166,7 @@ object LandRecordStorageManager {
     "jlNo": "${task.jlNo}",
     "mouzaId": "${task.mouzaId}"
   },
+  "referenceId": "${task.referenceId ?: "N/A"}",
   "recordType": "${task.recordTypeLabel}",
   "totalKhatians": ${task.totalKhatians},
   "fileSizeBytes": ${task.fileSizeBytes},

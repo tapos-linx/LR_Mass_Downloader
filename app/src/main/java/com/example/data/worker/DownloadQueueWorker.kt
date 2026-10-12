@@ -174,9 +174,14 @@ class DownloadQueueWorker(
 
                 // Update notification with live progress & anti-blocking rate
                 try {
+                    val notifTitle = if (task.referenceId != null) {
+                        "📥 Ref #${task.referenceId} - ${task.mouzaNameBn}"
+                    } else {
+                        "📥 ${task.mouzaNameBn} (JL ${task.jlNo})"
+                    }
                     setForeground(
                         createForegroundInfo(
-                            title = "📥 ${task.mouzaNameBn} (JL ${task.jlNo})",
+                            title = notifTitle,
                             content = "$downloaded/$totalKhatians Khatians • $speed KB/s [Anti-Blocking Active]",
                             progress = progress,
                             max = 100

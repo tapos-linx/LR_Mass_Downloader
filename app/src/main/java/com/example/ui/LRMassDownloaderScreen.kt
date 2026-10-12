@@ -119,12 +119,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import com.example.data.model.District
 import com.example.data.model.DownloadTask
 import com.example.data.model.MasterArchive
 import com.example.data.model.Mouza
 import com.example.data.model.RecordType
 import com.example.data.model.SavedRecord
 import com.example.data.model.TaskStatus
+import com.example.data.model.Upazila
 import com.example.data.model.UpazilaFetchInfo
 import com.example.ui.theme.AmberAccent
 import com.example.ui.theme.AmberContainer
@@ -213,11 +215,6 @@ fun LRMassDownloaderScreen(
                     .background(Slate50),
                 topBar = {
                     GovTechHeader(
-                        savedRecordsCount = savedRecords.size,
-                        queueCount = activeAndPendingCount,
-                        onOpenKhotiyanForm = { viewModel.navigateToScreen(AppScreen.KHOTIYAN_FORM) },
-                        onOpenQueueStatus = { viewModel.navigateToScreen(AppScreen.QUEUE_STATUS) },
-                        onOpenSavedRecords = { viewModel.setShowHistoryDialog(true) },
                         onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) }
                     )
                 },
@@ -226,18 +223,6 @@ fun LRMassDownloaderScreen(
                         containerColor = Color.White,
                         tonalElevation = 4.dp
                     ) {
-                        NavigationBarItem(
-                            selected = false,
-                            onClick = { viewModel.navigateToScreen(AppScreen.KHOTIYAN_FORM) },
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.Assignment,
-                                    contentDescription = "Khotiyan Form"
-                                )
-                            },
-                            label = { Text("Khotiyan Form") },
-                            modifier = Modifier.testTag("nav_item_khotiyan_form")
-                        )
                         NavigationBarItem(
                             selected = true,
                             onClick = { viewModel.navigateToScreen(AppScreen.DOWNLOADER) },
@@ -351,67 +336,6 @@ fun LRMassDownloaderScreen(
                 }
             }
 
-            // Multi-Step Input Form Banner
-            item {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { viewModel.navigateToScreen(AppScreen.KHOTIYAN_FORM) }
-                        .testTag("banner_open_khotiyan_form"),
-                    shape = RoundedCornerShape(14.dp),
-                    color = EmeraldContainer.copy(alpha = 0.5f),
-                    border = BorderStroke(1.dp, EmeraldLight.copy(alpha = 0.6f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(EmeraldDark),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Assignment,
-                                    contentDescription = null,
-                                    tint = AmberAccent,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = "বহু-ধাপ খতিয়ান ইনপুট ফর্ম (Multi-Step Form)",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = EmeraldDark
-                                )
-                                Text(
-                                    text = "কুমিল্লা/ব্রাহ্মণবাড়িয়া, মৌজা ও খতিয়ান নম্বর দিয়ে সরাসরি কিউ করুন",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = Slate600
-                                )
-                            }
-                        }
-                        Button(
-                            onClick = { viewModel.navigateToScreen(AppScreen.KHOTIYAN_FORM) },
-                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Text("ফর্ম খুলুন", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-                    }
-                }
-            }
-
             // 1. Cascading State Filter Card with "Select All Documents" button
             item {
                 CascadingHierarchyCard(
@@ -447,6 +371,23 @@ fun LRMassDownloaderScreen(
                     onToggleMouza = { viewModel.toggleMouza(it) },
                     isUpazilaSelected = uiState.selectedUpazilaId != null,
                     onQueueSelected = { viewModel.queueSelectedDownloads() }
+                )
+            }
+
+            // 2.5 WorkManager Sequential Reference IDs Input Queue Card
+            item {
+                BatchReferenceIdsInputCard(
+                    currentDistrict = viewModel.currentDistrict,
+                    currentUpazila = viewModel.currentUpazila,
+                    currentMouza = viewModel.currentMouzas.find { it.id in uiState.selectedMouzaIds } ?: viewModel.currentMouzas.firstOrNull(),
+                    availableMouzas = viewModel.currentMouzas,
+                    onSelectMouza = { viewModel.toggleMouza(it) },
+                    selectedRecordTypes = uiState.selectedRecordTypes,
+                    onToggleRecordType = { viewModel.toggleRecordType(it) },
+                    onQueueReferenceIds = { dist, upaz, mouza, ids, types ->
+                        viewModel.queueReferenceIdsDownload(dist, upaz, mouza, ids, types)
+                    },
+                    onOpenQueueStatus = { viewModel.navigateToScreen(AppScreen.QUEUE_STATUS) }
                 )
             }
 
@@ -1149,11 +1090,11 @@ fun MasterLedgerDialog(
 
 @Composable
 fun GovTechHeader(
-    savedRecordsCount: Int,
+    savedRecordsCount: Int = 0,
     queueCount: Int = 0,
     onOpenKhotiyanForm: () -> Unit = {},
     onOpenQueueStatus: () -> Unit = {},
-    onOpenSavedRecords: () -> Unit,
+    onOpenSavedRecords: () -> Unit = {},
     onOpenApkInfo: () -> Unit
 ) {
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -2274,6 +2215,395 @@ fun MouzaItemCard(
 }
 
 val Slate300 = Color(0xFFCBD5E1)
+
+/**
+ * Dedicated Material 3 Card enabling users to input a list of land record reference IDs
+ * and queue them for sequential background downloading via WorkManager.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun BatchReferenceIdsInputCard(
+    currentDistrict: District?,
+    currentUpazila: Upazila?,
+    currentMouza: Mouza?,
+    availableMouzas: List<Mouza>,
+    onSelectMouza: (String) -> Unit,
+    selectedRecordTypes: Set<RecordType>,
+    onToggleRecordType: (RecordType) -> Unit,
+    onQueueReferenceIds: (District, Upazila, Mouza, List<String>, Set<RecordType>) -> Unit,
+    onOpenQueueStatus: () -> Unit
+) {
+    var rawInputText by remember { mutableStateOf("") }
+    var selectedMouzaOverrideId by remember(currentMouza) { mutableStateOf(currentMouza?.id) }
+    var isMouzaDropdownOpen by remember { mutableStateOf(false) }
+
+    val activeMouza = remember(selectedMouzaOverrideId, availableMouzas, currentMouza) {
+        availableMouzas.find { it.id == selectedMouzaOverrideId } ?: currentMouza ?: availableMouzas.firstOrNull()
+    }
+
+    val parsedIds = remember(rawInputText) {
+        LRDownloaderViewModel.parseReferenceIds(rawInputText)
+    }
+
+    val context = LocalContext.current
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("batch_reference_ids_input_card")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header with Icon
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(BlueContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FormatListNumbered,
+                            contentDescription = null,
+                            tint = BlueAccent,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Column {
+                        Text(
+                            text = "Reference IDs Sequential Queue",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Slate900
+                        )
+                        Text(
+                            text = "রেফারেন্স আইডি তালিকা ইনপুট ও WorkManager ব্যাকগ্রাউন্ড ডাউনলোড",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = Slate600
+                        )
+                    }
+                }
+
+                if (parsedIds.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BlueContainer)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${parsedIds.size} IDs",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                color = BlueAccent
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Target Mouza Selector Badge
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Slate100,
+                border = BorderStroke(1.dp, Slate200),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Target Mouza (টার্গেট মৌজা):",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, color = Slate500)
+                        )
+                        Text(
+                            text = if (activeMouza != null && currentDistrict != null && currentUpazila != null) {
+                                "${currentDistrict.nameBn} > ${currentUpazila.nameBn} > ${activeMouza.nameBn} (JL ${activeMouza.jlNo})"
+                            } else {
+                                "উপজেলা থেকে মৌজা নির্বাচন করুন"
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Slate800
+                            )
+                        )
+                    }
+
+                    if (availableMouzas.isNotEmpty()) {
+                        Box {
+                            OutlinedButton(
+                                onClick = { isMouzaDropdownOpen = true },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("মৌজা পরিবর্তন", fontSize = 11.sp)
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+
+                            DropdownMenu(
+                                expanded = isMouzaDropdownOpen,
+                                onDismissRequest = { isMouzaDropdownOpen = false }
+                            ) {
+                                availableMouzas.take(30).forEach { mouza ->
+                                    DropdownMenuItem(
+                                        text = { Text("${mouza.nameBn} (${mouza.nameEn}) • JL ${mouza.jlNo}", fontSize = 12.sp) },
+                                        onClick = {
+                                            selectedMouzaOverrideId = mouza.id
+                                            onSelectMouza(mouza.id)
+                                            isMouzaDropdownOpen = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Input Text Area
+            OutlinedTextField(
+                value = rawInputText,
+                onValueChange = { rawInputText = it },
+                label = { Text("List of Reference IDs / খতিয়ান নম্বরসমূহ") },
+                placeholder = {
+                    Text(
+                        "Paste or type IDs e.g. 101, 102, 105, 201-205, LR-401...\nSupports comma, space, newline, or 1-10 ranges",
+                        fontSize = 12.sp,
+                        color = Slate400
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("reference_ids_input_field"),
+                minLines = 3,
+                maxLines = 5,
+                shape = RoundedCornerShape(12.dp),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+            )
+
+            // Quick Example Presets
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "Presets:",
+                    style = MaterialTheme.typography.labelSmall.copy(color = Slate500, fontWeight = FontWeight.Bold)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Slate100,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.clickable { rawInputText = "101, 102, 103, 104, 105" }
+                ) {
+                    Text(
+                        text = "101-105",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = BlueAccent),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Slate100,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.clickable { rawInputText = "201, 205, 210, 215, 220" }
+                ) {
+                    Text(
+                        text = "201, 205, 210...",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = BlueAccent),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Slate100,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.clickable { rawInputText = "LR-01, LR-02, LR-03" }
+                ) {
+                    Text(
+                        text = "LR-01..03",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = BlueAccent),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                if (rawInputText.isNotEmpty()) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = "Clear",
+                        style = MaterialTheme.typography.labelSmall.copy(color = RoseError, fontWeight = FontWeight.Bold),
+                        modifier = Modifier
+                            .clickable { rawInputText = "" }
+                            .padding(4.dp)
+                    )
+                }
+            }
+
+            // Detected Reference IDs Preview Chips
+            if (parsedIds.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Detected Reference IDs (${parsedIds.size} Items):",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Slate700
+                            )
+                        )
+                        Text(
+                            text = "Sequential FIFO Queue",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                color = EmeraldDark,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        parsedIds.take(15).forEach { id ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = BlueContainer,
+                                border = BorderStroke(1.dp, BlueAccent.copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        text = "#$id",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = BlueAccent
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        if (parsedIds.size > 15) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Slate200
+                            ) {
+                                Text(
+                                    text = "+${parsedIds.size - 15} more",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = Slate700
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // WorkManager Anti-Freeze Engine Info
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = EmeraldContainer.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, EmeraldLight.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = EmeraldDark,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "⚡ WorkManager Sequential Processing: IDs will download one by one in the background with anti-blocking delays. The UI remains 100% fluid and responsive.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, color = Slate800)
+                    )
+                }
+            }
+
+            // Primary Queue Button
+            Button(
+                onClick = {
+                    if (currentDistrict != null && currentUpazila != null && activeMouza != null && parsedIds.isNotEmpty()) {
+                        onQueueReferenceIds(
+                            currentDistrict,
+                            currentUpazila,
+                            activeMouza,
+                            parsedIds,
+                            selectedRecordTypes
+                        )
+                        rawInputText = ""
+                        Toast.makeText(
+                            context,
+                            "✅ ${parsedIds.size}টি রেফারেন্স আইডি WorkManager কিউ-তে যুক্ত হয়েছে (ক্রমানুসারে ডাউনলোড হচ্ছে)!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
+                enabled = parsedIds.isNotEmpty() && activeMouza != null && currentDistrict != null && currentUpazila != null,
+                colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("queue_reference_ids_button"),
+                contentPadding = PaddingValues(vertical = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CloudDownload,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (parsedIds.isEmpty()) {
+                        "Enter Reference IDs Above to Queue"
+                    } else {
+                        "Queue ${parsedIds.size} Reference IDs for Background Download"
+                    },
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun QueueHudCard(

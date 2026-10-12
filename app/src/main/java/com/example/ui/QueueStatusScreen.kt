@@ -36,7 +36,9 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FolderSpecial
+import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Layers
@@ -47,6 +49,8 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -59,6 +63,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -136,6 +142,7 @@ fun QueueStatusScreen(
     }
 
     val uiState by viewModel.uiState.collectAsState()
+    val savedRecords by viewModel.savedRecords.collectAsState()
     val tasks = uiState.queue
 
     val activeTasks = remember(tasks) { tasks.filter { it.status == TaskStatus.DOWNLOADING } }
@@ -175,14 +182,82 @@ fun QueueStatusScreen(
             )
         },
         bottomBar = {
-            QueueStickyBottomBar(
-                isPaused = uiState.isPaused,
-                totalTasks = totalTasksCount,
-                pendingTasks = pendingTasks.size,
-                onTogglePause = { viewModel.togglePauseQueue() },
-                onClearQueue = { viewModel.clearQueue() },
-                onReturnToSelection = onNavigateBack
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+            ) {
+                QueueStickyBottomBar(
+                    isPaused = uiState.isPaused,
+                    totalTasks = totalTasksCount,
+                    pendingTasks = pendingTasks.size,
+                    onTogglePause = { viewModel.togglePauseQueue() },
+                    onClearQueue = { viewModel.clearQueue() },
+                    onReturnToSelection = onNavigateBack
+                )
+                NavigationBar(
+                    containerColor = Color.White,
+                    tonalElevation = 4.dp
+                ) {
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = onNavigateBack,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = "Downloader"
+                            )
+                        },
+                        label = { Text("Downloader") },
+                        modifier = Modifier.testTag("nav_item_downloader")
+                    )
+                    NavigationBarItem(
+                        selected = true,
+                        onClick = { /* already on queue screen */ },
+                        icon = {
+                            BadgedBox(
+                                badge = {
+                                    val activeAndPending = activeTasks.size + pendingTasks.size
+                                    if (activeAndPending > 0) {
+                                        Badge(containerColor = if (activeTasks.isNotEmpty()) BlueAccent else AmberDark) {
+                                            Text("$activeAndPending")
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FormatListNumbered,
+                                    contentDescription = "Queue Status"
+                                )
+                            }
+                        },
+                        label = { Text("Queue Status", fontWeight = FontWeight.Bold) },
+                        modifier = Modifier.testTag("nav_item_queue_status")
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { viewModel.setShowHistoryDialog(true) },
+                        icon = {
+                            BadgedBox(
+                                badge = {
+                                    if (savedRecords.isNotEmpty()) {
+                                        Badge(containerColor = EmeraldPrimary) {
+                                            Text("${savedRecords.size}")
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = "Vault"
+                                )
+                            }
+                        },
+                        label = { Text("Vault") },
+                        modifier = Modifier.testTag("nav_item_vault")
+                    )
+                }
+            }
         }
     ) { innerPadding ->
         LazyColumn(
@@ -928,6 +1003,25 @@ private fun QueueItemDashboardCard(
                                 ),
                                 color = Slate900
                             )
+                            if (task.referenceId != null) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(BlueContainer)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Ref #${task.referenceId}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 10.sp,
+                                            color = BlueAccent
+                                        )
+                                    )
+                                }
+                            }
                             Text(
                                 text = "(${task.mouzaNameEn})",
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
@@ -1323,14 +1417,13 @@ private fun QueueStickyBottomBar(
 ) {
     Surface(
         color = Color.White,
-        shadowElevation = 6.dp,
+        shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {

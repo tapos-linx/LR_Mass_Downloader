@@ -56,7 +56,8 @@ data class DownloadTask(
     val fileSizeBytes: Long = 1024 * 1024,
     val speedKbps: Int = 0,
     val batchNumber: Int = 1,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val referenceId: String? = null
 ) {
     val recordTypeLabel: String
         get() = if (recordTypes.size == RecordType.values().size) {

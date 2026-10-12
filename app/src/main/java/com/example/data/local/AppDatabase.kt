@@ -28,7 +28,7 @@ interface SavedRecordDao {
     suspend fun clearAllRecords()
 }
 
-@Database(entities = [SavedRecord::class, DownloadTask::class], version = 2, exportSchema = false)
+@Database(entities = [SavedRecord::class, DownloadTask::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun savedRecordDao(): SavedRecordDao
