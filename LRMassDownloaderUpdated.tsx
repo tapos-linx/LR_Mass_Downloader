@@ -568,6 +568,21 @@ export const LRMassDownloaderUpdated: React.FC = () => {
     return Math.ceil(availableMouzas.length / 7);
   }, [availableMouzas]);
 
+  // Direct 1-Click APK Download using invisible anchor with download attribute (No navigator.share / No Share Sheet)
+  const downloadApk = (
+    fileUrl: string = 'https://github.com/tapos-linx/LR_Mass_Downloader/releases/latest/download/LR%20Mass%20Downloader.apk',
+    fileName: string = 'LR Mass Downloader.apk'
+  ) => {
+    const link = document.createElement('a');
+    link.href = fileUrl;
+    link.setAttribute('download', fileName);
+    link.setAttribute('target', '_self');
+    link.setAttribute('type', 'application/vnd.android.package-archive');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const filteredMouzas = useMemo(() => {
     if (!searchQuery.trim()) return availableMouzas;
     const q = searchQuery.toLowerCase().trim();
@@ -946,9 +961,23 @@ export const LRMassDownloaderUpdated: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 bg-emerald-800/60 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-emerald-500/30 text-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span className="font-medium text-emerald-100">Anti-Freeze Concurrency: Max 2</span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => downloadApk()}
+                className="flex items-center gap-2 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs rounded-2xl shadow-lg shadow-amber-950/20 transition-all border border-amber-300"
+                title="Direct 1-Click APK Download (No Share Sheet)"
+              >
+                <svg className="w-4 h-4 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Download APK</span>
+              </button>
+
+              <div className="flex items-center gap-3 bg-emerald-800/60 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-emerald-500/30 text-xs">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="font-medium text-emerald-100">Anti-Freeze Concurrency: Max 2</span>
+              </div>
             </div>
           </div>
         </header>

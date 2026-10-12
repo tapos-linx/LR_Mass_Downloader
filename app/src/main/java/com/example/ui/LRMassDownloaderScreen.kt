@@ -1,14 +1,19 @@
 package com.example.ui
 
 import android.app.Activity
+import android.app.DownloadManager
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -56,6 +61,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FolderOpen
@@ -1178,17 +1184,19 @@ fun GovTechHeader(
                             brush = androidx.compose.ui.graphics.SolidColor(AmberAccent.copy(alpha = 0.7f))
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.testTag("open_apk_download_button")
+                        modifier = Modifier
+                            .testTag("download_apk_button")
+                            .testTag("open_apk_download_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.CloudDownload,
-                            contentDescription = "APK",
+                            contentDescription = "Download APK",
                             modifier = Modifier.size(16.dp),
                             tint = AmberAccent
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "APK",
+                            text = "Download APK",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                         )
                     }
@@ -1206,7 +1214,9 @@ fun ApkDownloadDialog(
     var customRepo by remember { mutableStateOf("tapos-linx/LR_Mass_Downloader") }
     var isEditingRepo by remember { mutableStateOf(false) }
 
-    val downloadUrl = "https://github.com/$customRepo/releases/latest/download/LRMassDownloader.apk"
+    // Official GitHub Releases direct asset download pattern
+    val downloadUrl = "https://github.com/$customRepo/releases/latest/download/LR%20Mass%20Downloader.apk"
+    val directUrlNoSpaces = "https://github.com/$customRepo/releases/latest/download/LRMassDownloader.apk"
     val actionsUrl = "https://github.com/$customRepo/actions"
     val releasesUrl = "https://github.com/$customRepo/releases"
 
@@ -1258,28 +1268,117 @@ fun ApkDownloadDialog(
         }
     }
 
-    // Helper: Share or export APK file directly (WhatsApp, Drive, Bluetooth, etc.)
-    fun shareLocalApkFile() {
-        try {
+    // Helper: 1-Click direct download of APK to device's local storage (Downloads folder) with zero share sheet
+    fun downloadApkToLocalStorage(): File? {
+        return try {
             val apkFile = getLocalApkFile()
+            val fileName = "LR Mass Downloader.apk"
+            val altFileName = "LRMassDownloader.apk"
+            val mimeType = "application/vnd.android.package-archive"
+            var savedPath = ""
+
             if (apkFile != null && apkFile.exists()) {
-                val apkUri = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    apkFile
-                )
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/vnd.android.package-archive"
-                    putExtra(Intent.EXTRA_STREAM, apkUri)
-                    putExtra(Intent.EXTRA_SUBJECT, "LR Mass Downloader APK (v$currentVersion)")
-                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                val apkBytes = apkFile.readBytes()
+
+                // 1. Android 10+ (Q+) MediaStore Downloads API
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val resolver = context.contentResolver
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                        put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
+                    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                    if (uri != null) {
+                        resolver.openOutputStream(uri, "wt")?.use { out ->
+                            out.write(apkBytes)
+                            out.flush()
+                        }
+                        contentValues.clear()
+                        contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                        resolver.update(uri, contentValues, null, null)
+                        savedPath = "/storage/emulated/0/Download/$fileName"
+                    }
                 }
-                context.startActivity(Intent.createChooser(shareIntent, "Share LR Mass Downloader APK"))
+
+                // 2. Direct File write to public storage (/sdcard/Download/)
+                try {
+                    val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    if (!publicDownloads.exists()) publicDownloads.mkdirs()
+                    val targetFile = File(publicDownloads, fileName)
+                    targetFile.writeBytes(apkBytes)
+                    savedPath = targetFile.absolutePath
+
+                    // Also save alias "LRMassDownloader.apk" for convenience
+                    val aliasFile = File(publicDownloads, altFileName)
+                    aliasFile.writeBytes(apkBytes)
+
+                    MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(targetFile.absolutePath, aliasFile.absolutePath),
+                        arrayOf(mimeType, mimeType),
+                        null
+                    )
+                } catch (ignored: Exception) {}
+
+                // Fallback to app external files directory if public access restricted
+                if (savedPath.isEmpty()) {
+                    val fallbackDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                    if (fallbackDir != null) {
+                        val fallbackFile = File(fallbackDir, fileName)
+                        fallbackFile.writeBytes(apkBytes)
+                        savedPath = fallbackFile.absolutePath
+                    }
+                }
+
+                val sizeMb = String.format(Locale.US, "%.1f", apkFile.length() / (1024f * 1024f))
+                Toast.makeText(
+                    context,
+                    "📥 APK ডাউনলোড সম্পন্ন! ফাইল: Download/$fileName (${sizeMb} MB)",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                File(savedPath.ifEmpty { apkFile.absolutePath })
             } else {
-                Toast.makeText(context, "APK ফাইল এক্সপোর্ট করা যায়নি", Toast.LENGTH_SHORT).show()
+                // If local app source APK is not extracted, enqueue direct download via system DownloadManager into Downloads/
+                try {
+                    val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    val request = DownloadManager.Request(Uri.parse(downloadUrl))
+                        .setTitle(fileName)
+                        .setDescription("Downloading $fileName directly to Downloads...")
+                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                        .setMimeType(mimeType)
+                    dm.enqueue(request)
+                    Toast.makeText(
+                        context,
+                        "📥 APK ডাউনলোড শুরু হয়েছে! ফাইল: Download/$fileName",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (e: Exception) {
+                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(browserIntent)
+                }
+                null
             }
         } catch (e: Exception) {
-            Toast.makeText(context, "শেয়ার করতে ব্যর্থ: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "ডাউনলোড ব্যর্থ: ${e.message}", Toast.LENGTH_LONG).show()
+            null
+        }
+    }
+
+    // Helper: Open Downloads folder directly on device
+    fun openDownloadsFolder() {
+        try {
+            val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Downloads ফোল্ডার: /sdcard/Download/", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1323,7 +1422,7 @@ fun ApkDownloadDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Primary Instant Option: Direct Local APK Install/Share
+                // Primary Instant Option: Direct Local APK 1-Click Download & Direct Install (Zero Share Sheet)
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = EmeraldContainer.copy(alpha = 0.5f)),
@@ -1333,21 +1432,21 @@ fun ApkDownloadDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.InstallMobile,
+                                imageVector = Icons.Default.DownloadDone,
                                 contentDescription = null,
                                 tint = EmeraldDark,
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "📲 সরাসরি ইনস্টল ও শেয়ার (০% ইন্টারনেট খরচ):",
+                                text = "📥 সরাসরি ১-ক্লিক লোকাল ডাউনলোড ও ইনস্টল:",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     color = EmeraldDark
@@ -1355,7 +1454,7 @@ fun ApkDownloadDialog(
                             )
                         }
                         Text(
-                            text = "বর্তমান অ্যাপটি সরাসরি আপনার ডিভাইসে ইনস্টল করুন অথবা ফাইল হিসেবে হোয়াটসঅ্যাপ/ড্রাইভে পাঠান। কোনো 404 ত্রুটি নেই!",
+                            text = "কোনো শেয়ার শিট (Gmail/Google Drive) ছাড়াই সরাসরি ডিভাইসের Downloads ফোল্ডারে APK সেভ করুন অথবা ১-ক্লিকে ইনস্টল করুন।",
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, color = Slate800)
                         )
                         Row(
@@ -1363,29 +1462,31 @@ fun ApkDownloadDialog(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Button(
-                                onClick = { triggerInstallLocalApk() },
+                                onClick = { downloadApkToLocalStorage() },
                                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary),
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("download_apk_button")
+                                    .testTag("direct_download_apk_btn"),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
                             ) {
-                                Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("সরাসরি ইনস্টল", fontSize = 11.sp)
+                                Text("Downloads এ সেভ", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
-                            OutlinedButton(
-                                onClick = { shareLocalApkFile() },
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldDark),
-                                border = ButtonDefaults.outlinedButtonBorder.copy(
-                                    brush = androidx.compose.ui.graphics.SolidColor(EmeraldPrimary)
-                                ),
+                            Button(
+                                onClick = { triggerInstallLocalApk() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Slate800),
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("direct_install_apk_btn"),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
                             ) {
-                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("APK ফাইল পাঠান", fontSize = 11.sp)
+                                Text("সরাসরি ইনস্টল", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1491,21 +1592,14 @@ fun ApkDownloadDialog(
                     }
 
                     OutlinedButton(
-                        onClick = {
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, "LR Mass Downloader APK")
-                                putExtra(Intent.EXTRA_TEXT, "Download LR Mass Downloader (Bangladesh Land Records) APK:\n$downloadUrl")
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Share APK Link"))
-                        },
+                        onClick = { openDownloadsFolder() },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(13.dp))
                         Spacer(modifier = Modifier.width(3.dp))
-                        Text("Share Link", fontSize = 10.sp)
+                        Text("Open Downloads", fontSize = 10.sp)
                     }
                 }
 
@@ -1554,6 +1648,18 @@ fun ApkDownloadDialog(
             Button(
                 onClick = {
                     try {
+                        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                        val request = DownloadManager.Request(Uri.parse(downloadUrl))
+                            .setTitle("LR Mass Downloader.apk")
+                            .setDescription("Downloading LR Mass Downloader APK directly...")
+                            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "LR Mass Downloader.apk")
+                            .setMimeType("application/vnd.android.package-archive")
+                        dm.enqueue(request)
+                        Toast.makeText(context, "📥 ডাউনলোড শুরু হয়েছে: Download/LR Mass Downloader.apk", Toast.LENGTH_SHORT).show()
+                    } catch (ignored: Exception) {}
+
+                    try {
                         val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK
                         }
@@ -1562,11 +1668,12 @@ fun ApkDownloadDialog(
                         Toast.makeText(context, "ব্রাউজার ওপেন করা যায়নি", Toast.LENGTH_SHORT).show()
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
+                colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary),
+                modifier = Modifier.testTag("browser_direct_download_btn")
             ) {
-                Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("GitHub থেকে ডাউনলোড")
+                Text("GitHub Releases সরাসরি ডাউনলোড")
             }
         },
         dismissButton = {

@@ -75,6 +75,9 @@ jobs:
         run: |
           mkdir -p release-output
           cp app/build/outputs/apk/debug/app-debug.apk release-output/LRMassDownloader.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "release-output/LR Mass Downloader.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/LR_Mass_Downloader.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/app-release.apk
           cp app/build/outputs/apk/debug/app-debug.apk release-output/LRMassDownloader-${{ env.VERSION_TAG }}.apk
           ls -lh release-output/
 
@@ -96,11 +99,14 @@ jobs:
           prerelease: false
           generate_release_notes: true
           body: |
-            ### 📜 LR Mass Downloader - Automated Release ${{ env.VERSION_TAG }}
+            ### 📜 LR Mass Downloader - Automated Production Release ${{ env.VERSION_TAG }}
             
-            #### 🚀 One-Click APK Direct Download Links:
-            - 👉 [**Download LRMassDownloader.apk (Always Latest)**](https://github.com/${{ github.repository }}/releases/latest/download/LRMassDownloader.apk)
-            - 📦 [Download LRMassDownloader-${{ env.VERSION_TAG }}.apk](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION_TAG }}/LRMassDownloader-${{ env.VERSION_TAG }}.apk)
+            #### 🚀 One-Click APK Direct Production Download Links (No 404):
+            - 👉 [**Download LR Mass Downloader.apk (Official Direct Asset)**](https://github.com/${{ github.repository }}/releases/latest/download/LR%20Mass%20Downloader.apk)
+            - 👉 [**Download LR_Mass_Downloader.apk**](https://github.com/${{ github.repository }}/releases/latest/download/LR_Mass_Downloader.apk)
+            - 👉 [**Download LRMassDownloader.apk (Latest)**](https://github.com/${{ github.repository }}/releases/latest/download/LRMassDownloader.apk)
+            - 👉 [**Download app-release.apk**](https://github.com/${{ github.repository }}/releases/latest/download/app-release.apk)
+            - 📦 [Download Version Tagged APK (${{ env.VERSION_TAG }})](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION_TAG }}/LRMassDownloader-${{ env.VERSION_TAG }}.apk)
             
             ---
             
@@ -123,6 +129,9 @@ jobs:
             - **Automatic Cache Cleanup**: Clears temporary memory post-export
           files: |
             release-output/LRMassDownloader.apk
+            release-output/LR Mass Downloader.apk
+            release-output/LR_Mass_Downloader.apk
+            release-output/app-release.apk
             release-output/LRMassDownloader-${{ env.VERSION_TAG }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

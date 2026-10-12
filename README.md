@@ -18,19 +18,21 @@ If you are developing or testing this project in **AI Studio**:
 2. Select **"Download APK"** or **"Generate APK"**.
 3. Your device or browser will download the compiled `app-debug.apk` immediately without waiting for GitHub.
 
-### Option 2: In-App Direct APK Install & Share (Zero Internet)
+### Option 2: In-App Direct 1-Click APK Download & Install (Zero Share Sheet)
 Inside the running Android app:
 1. Tap the **"APK"** button in the top GovTech header bar.
-2. Tap **"সরাসরি ইনস্টল" (Direct Install)** — Android's package installer launches immediately to install the APK!
-3. Or tap **"APK ফাইল পাঠান" (Share APK File)** to send the `.apk` file directly via WhatsApp, Bluetooth, Nearby Share, or Google Drive.
+2. Tap **"Downloads এ সেভ" (Save to Downloads)** — The APK is saved immediately to `/sdcard/Download/LRMassDownloader.apk` with zero internet cost and zero share sheets!
+3. Or tap **"সরাসরি ইনস্টল" (Direct Install)** — Android's package installer launches immediately to install the APK!
 
-### Option 3: GitHub Releases (Auto CI/CD Build)
+### Option 3: GitHub Releases Direct Production Downloads (Official URL Pattern)
 
 | Download Type | Direct Link | Description |
 | :--- | :--- | :--- |
-| 🔗 **Relative Repo Link (No 404)** | [⬇️ **Download Latest Release APK**](../../releases/latest/download/LRMassDownloader.apk) | Adapts dynamically to any GitHub repo fork/name. |
-| 📦 **All Releases & Versions** | [📂 **View All Releases & Version History**](../../releases) | Browse all previous versions and changelogs. |
-| ⚙️ **Live Build Status** | [📊 **GitHub Actions Live Runs**](../../actions) | Watch the automated Gradle build build the APK. |
+| 🚀 **Direct Production Download (Official Pattern)** | [⬇️ **Download LR Mass Downloader.apk**](https://github.com/tapos-linx/LR_Mass_Downloader/releases/latest/download/LR%20Mass%20Downloader.apk) | Official direct asset download pattern: `releases/latest/download/<LR Mass Downloader>.apk`. Initiates instant browser download without 404! |
+| 🚀 **Direct Download (Unspaced Alias)** | [⬇️ **Download LRMassDownloader.apk**](https://github.com/tapos-linx/LR_Mass_Downloader/releases/latest/download/LRMassDownloader.apk) | Direct production asset download without spaces. |
+| 🚀 **Direct Download (Underscored)** | [⬇️ **Download LR_Mass_Downloader.apk**](https://github.com/tapos-linx/LR_Mass_Downloader/releases/latest/download/LR_Mass_Downloader.apk) | Direct release asset matching repository slug. |
+| 📦 **All Releases & Versions** | [📂 **View All Releases & Version History**](https://github.com/tapos-linx/LR_Mass_Downloader/releases) | Browse all release tags and historical builds. |
+| ⚙️ **Live Build Status** | [📊 **GitHub Actions Live Runs**](https://github.com/tapos-linx/LR_Mass_Downloader/actions) | Monitor the automated CI/CD pipeline. |
 
 ---
 
