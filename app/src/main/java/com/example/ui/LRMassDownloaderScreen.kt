@@ -50,7 +50,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -191,8 +191,9 @@ fun LRMassDownloaderScreen(
     val completedTasks = uiState.queue.count { it.status == TaskStatus.COMPLETED }
     val downloadingTasks = uiState.queue.count { it.status == TaskStatus.DOWNLOADING }
     val pendingTasks = uiState.queue.count { it.status == TaskStatus.PENDING }
-    val overallProgress = if (totalTasks == 0) 0 else {
-        uiState.queue.sumOf { it.progress } / totalTasks
+    val failedTasks = uiState.queue.count { it.status == TaskStatus.FAILED }
+    val overallProgress = if (totalTasks == 0) 0f else {
+        uiState.queue.sumOf { it.progress }.toFloat() / totalTasks
     }
 
     val storagePermissionLauncher = rememberLauncherForActivityResult(
@@ -237,9 +238,24 @@ fun LRMassDownloaderScreen(
                     .fillMaxSize()
                     .background(Slate50),
                 topBar = {
-                    GovTechHeader(
-                        onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) }
-                    )
+                    Column(modifier = Modifier.statusBarsPadding()) {
+                        GovTechHeader(
+                            savedRecordsCount = savedRecords.size,
+                            queueCount = totalTasks,
+                            completedCount = completedTasks,
+                            downloadingCount = downloadingTasks,
+                            failedCount = failedTasks,
+                            onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) }
+                        )
+                        // Global Progress Bar: Indicates total percentage of completed downloads across the active queue
+                        AnimatedVisibility(visible = totalTasks > 0 && completedTasks < totalTasks) {
+                            GlobalDownloadProgressBar(
+                                progress = overallProgress / 100f,
+                                completedCount = completedTasks,
+                                totalCount = totalTasks
+                            )
+                        }
+                    }
                 },
                 bottomBar = {
                     NavigationBar(
@@ -310,14 +326,7 @@ fun LRMassDownloaderScreen(
                         .fillMaxSize()
                         .padding(innerPadding)
                 ) {
-                    // Global Progress Bar: Indicates total percentage of completed downloads across the active queue
-                    AnimatedVisibility(visible = totalTasks > 0 && completedTasks < totalTasks) {
-                        GlobalDownloadProgressBar(
-                            progress = overallProgress / 100f,
-                            completedCount = completedTasks,
-                            totalCount = totalTasks
-                        )
-                    }
+                    // Removed local GlobalDownloadProgressBar as it is now in the topBar for stickiness
 
                     LazyColumn(
                         modifier = Modifier
@@ -1200,20 +1209,21 @@ fun MasterLedgerDialog(
 fun GovTechHeader(
     savedRecordsCount: Int = 0,
     queueCount: Int = 0,
+    completedCount: Int = 0,
+    downloadingCount: Int = 0,
+    failedCount: Int = 0,
     onOpenKhotiyanForm: () -> Unit = {},
     onOpenQueueStatus: () -> Unit = {},
     onOpenSavedRecords: () -> Unit = {},
     onOpenApkInfo: () -> Unit
 ) {
-    val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     Surface(
-        color = EmeraldPrimary,
+        color = LogoNavy,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = topInset)
                 .padding(horizontal = 16.dp, vertical = 14.dp)
         ) {
             Row(
@@ -1229,7 +1239,8 @@ fun GovTechHeader(
                         modifier = Modifier
                             .size(54.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(LogoNavy),
+                            .background(LogoNavy)
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1237,28 +1248,28 @@ fun GovTechHeader(
                                 text = "LR",
                                 style = MaterialTheme.typography.titleSmall.copy(
                                     fontWeight = FontWeight.Black,
-                                    fontSize = 16.sp,
-                                    color = LogoWhite
+                                    fontSize = 18.sp,
+                                    color = Color.White
                                 ),
-                                modifier = Modifier.offset(y = 2.dp)
+                                modifier = Modifier.offset(y = 4.dp)
                             )
                             Text(
                                 text = "get",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 10.sp,
                                     color = LogoTeal
                                 ),
-                                modifier = Modifier.offset(y = (-2).dp)
+                                modifier = Modifier.offset(y = 0.dp)
                             )
                             Text(
                                 text = "BD",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Black,
-                                    fontSize = 10.sp,
+                                    fontSize = 12.sp,
                                     color = LogoMagenta
                                 ),
-                                modifier = Modifier.offset(y = (-4).dp)
+                                modifier = Modifier.offset(y = (-3).dp)
                             )
                         }
                     }
@@ -1283,7 +1294,7 @@ fun GovTechHeader(
                             )
                         }
                         Text(
-                            text = "Khotiyan BD",
+                            text = "LR get BD",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 20.sp
@@ -1325,6 +1336,69 @@ fun GovTechHeader(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Zone 1: Real-Time Stats Overview (Hero Header)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatCard(
+                    title = "মোট টাস্ক",
+                    count = queueCount,
+                    containerColor = LogoNavy.copy(alpha = 0.4f),
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    title = "সম্পন্ন",
+                    count = completedCount,
+                    containerColor = EmeraldDark.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    title = "প্রসেসিং",
+                    count = downloadingCount,
+                    containerColor = BlueAccent.copy(alpha = 0.4f),
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    title = "ব্যর্থ",
+                    count = failedCount,
+                    containerColor = if (failedCount > 0) RoseDark.copy(alpha = 0.6f) else LogoNavy.copy(alpha = 0.3f),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StatCard(
+    title: String,
+    count: Int,
+    containerColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = containerColor,
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                color = Color.White.copy(alpha = 0.8f)
+            )
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                color = Color.White
+            )
         }
     }
 }
@@ -1339,7 +1413,7 @@ fun ApkDownloadDialog(
 
     // Official GitHub Releases direct asset download pattern
     val downloadUrl = "https://github.com/$customRepo/releases/latest/download/LR%20Mass%20Downloader.apk"
-    val directUrlNoSpaces = "https://github.com/$customRepo/releases/latest/download/KhotiyanBD.apk"
+    val directUrlNoSpaces = "https://github.com/$customRepo/releases/latest/download/LRgetBD.apk"
     val actionsUrl = "https://github.com/$customRepo/actions"
     val releasesUrl = "https://github.com/$customRepo/releases"
 
@@ -1395,8 +1469,8 @@ fun ApkDownloadDialog(
     fun downloadApkToLocalStorage(): File? {
         return try {
             val apkFile = getLocalApkFile()
-            val fileName = "Khotiyan BD.apk"
-            val altFileName = "KhotiyanBD.apk"
+            val fileName = "LR get BD.apk"
+            val altFileName = "LRgetBD.apk"
             val mimeType = "application/vnd.android.package-archive"
             var savedPath = ""
 
@@ -1433,7 +1507,7 @@ fun ApkDownloadDialog(
                     targetFile.writeBytes(apkBytes)
                     savedPath = targetFile.absolutePath
 
-                    // Also save alias "KhotiyanBD.apk" for convenience
+                    // Also save alias "LRgetBD.apk" for convenience
                     val aliasFile = File(publicDownloads, altFileName)
                     aliasFile.writeBytes(apkBytes)
 
@@ -1773,13 +1847,13 @@ fun ApkDownloadDialog(
                     try {
                         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                         val request = DownloadManager.Request(Uri.parse(downloadUrl))
-                            .setTitle("Khotiyan BD.apk")
-                            .setDescription("Downloading Khotiyan BD.apk directly...")
+                            .setTitle("LR get BD.apk")
+                            .setDescription("Downloading LR get BD.apk directly...")
                             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "Khotiyan BD.apk")
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "LR get BD.apk")
                             .setMimeType("application/vnd.android.package-archive")
                         dm.enqueue(request)
-                        Toast.makeText(context, "📥 ডাউনলোড শুরু হয়েছে: Download/Khotiyan BD.apk", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "📥 ডাউনলোড শুরু হয়েছে: Download/LR get BD.apk", Toast.LENGTH_SHORT).show()
                     } catch (ignored: Exception) {}
 
                     try {
@@ -2893,7 +2967,7 @@ fun QueueHudCard(
     completedTasks: Int,
     downloadingTasks: Int,
     pendingTasks: Int,
-    overallProgress: Int,
+    overallProgress: Float,
     currentBatch: Int,
     totalBatches: Int,
     targetTotalMouzas: Int,
@@ -3015,7 +3089,7 @@ fun QueueHudCard(
                         color = Slate600
                     )
                     Text(
-                        text = "$overallProgress%",
+                        text = "${overallProgress.toInt()}%",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.ExtraBold,
                             color = EmeraldPrimary

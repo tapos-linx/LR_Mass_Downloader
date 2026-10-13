@@ -165,7 +165,11 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
         }
 
     fun onDistrictChanged(newDistrictId: String) {
-        clearQueue()
+        val oldDistrictId = _uiState.value.selectedDistrictId
+        val shouldClear = oldDistrictId != "cumilla" && oldDistrictId != "brahmanbaria"
+        if (shouldClear) {
+            clearQueue()
+        }
         _uiState.value = _uiState.value.copy(
             selectedDistrictId = newDistrictId,
             selectedUpazilaId = null,

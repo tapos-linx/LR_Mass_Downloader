@@ -2,11 +2,11 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val EmeraldPrimary = Color(0xFF047857)
-val EmeraldDark = Color(0xFF064E3B)
-val EmeraldLight = Color(0xFF10B981)
-val EmeraldContainer = Color(0xFFD1FAE5)
-val OnEmeraldContainer = Color(0xFF064E3B)
+val EmeraldPrimary = Color(0xFF2DD4BF)
+val EmeraldDark = Color(0xFF0F766E)
+val EmeraldLight = Color(0xFF5EEAD4)
+val EmeraldContainer = Color(0xFFCCFBF1)
+val OnEmeraldContainer = Color(0xFF134E4A)
 
 val Slate900 = Color(0xFF0F172A)
 val Slate800 = Color(0xFF1E293B)

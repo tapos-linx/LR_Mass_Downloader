@@ -47,8 +47,10 @@ object LandRecordStorageManager {
         context: Context,
         fileName: String,
         content: String,
-        mimeType: String
+        mimeType: String,
+        subDir: String = LAND_RECORDS_SUBDIR
     ): SavedFileResult {
+        val relativePath = "Download/$subDir/"
         var resolvedPath = ""
         var resolvedUri: Uri? = null
         var isPublic = false
@@ -61,7 +63,7 @@ object LandRecordStorageManager {
                 // Query and clean up duplicate/previous entry with the same name if exists
                 val projection = arrayOf(MediaStore.MediaColumns._ID)
                 val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
-                val selectionArgs = arrayOf(fileName, RELATIVE_DOWNLOAD_PATH)
+                val selectionArgs = arrayOf(fileName, relativePath)
                 resolver.query(
                     MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                     projection,
@@ -81,7 +83,7 @@ object LandRecordStorageManager {
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                     put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, RELATIVE_DOWNLOAD_PATH)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
 
@@ -95,7 +97,7 @@ object LandRecordStorageManager {
                     contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
                     resolver.update(uri, contentValues, null, null)
                     resolvedUri = uri
-                    resolvedPath = "Download/$LAND_RECORDS_SUBDIR/$fileName"
+                    resolvedPath = "$relativePath$fileName"
                     isPublic = true
                 }
             } catch (e: Exception) {
@@ -105,12 +107,12 @@ object LandRecordStorageManager {
             // 2. Legacy Direct File writing to public storage (/storage/emulated/0/Download/LandRecords/)
             try {
                 val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val landRecordsFolder = File(publicDownloads, LAND_RECORDS_SUBDIR)
-                if (!landRecordsFolder.exists()) {
-                    landRecordsFolder.mkdirs()
+                val targetFolder = File(publicDownloads, subDir)
+                if (!targetFolder.exists()) {
+                    targetFolder.mkdirs()
                 }
 
-                val directFile = File(landRecordsFolder, fileName)
+                val directFile = File(targetFolder, fileName)
                 directFile.writeText(content, Charsets.UTF_8)
                 resolvedPath = directFile.absolutePath
                 isPublic = true
@@ -130,7 +132,7 @@ object LandRecordStorageManager {
         // 3. Fallback to external files if public access failed
         if (resolvedPath.isEmpty()) {
             try {
-                val appDownloads = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), LAND_RECORDS_SUBDIR)
+                val appDownloads = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), subDir)
                 if (!appDownloads.exists()) appDownloads.mkdirs()
                 val fallbackFile = File(appDownloads, fileName)
                 fallbackFile.writeText(content, Charsets.UTF_8)
@@ -142,7 +144,7 @@ object LandRecordStorageManager {
         }
 
         return SavedFileResult(
-            primaryDisplayPath = if (resolvedPath.isNotEmpty()) resolvedPath else "Download/LandRecords/$fileName",
+            primaryDisplayPath = if (resolvedPath.isNotEmpty()) resolvedPath else "$relativePath$fileName",
             mediaStoreUri = resolvedUri,
             isPublicDownloads = isPublic
         )
@@ -197,9 +199,11 @@ object LandRecordStorageManager {
         upazila: Upazila
     ): SavedFileResult {
         val safeMouzaName = task.mouzaNameEn.replace("[^a-zA-Z0-9]".toRegex(), "_")
+        val safeUpazilaName = upazila.nameEn.replace("[^a-zA-Z0-9]".toRegex(), "_")
         val safeRecordType = task.recordTypeLabel.replace("[^a-zA-Z0-9]".toRegex(), "_")
+        val subDir = "$LAND_RECORDS_SUBDIR/$safeUpazilaName"
         val refSuffix = if (task.referenceId != null) "_Ref_${task.referenceId.replace("[^a-zA-Z0-9]".toRegex(), "_")}" else ""
-        val jsonFileName = "${upazila.nameEn}_${safeMouzaName}${refSuffix}_JL${task.jlNo}_${safeRecordType}.json"
+        val jsonFileName = "${safeUpazilaName}_${safeMouzaName}${refSuffix}_JL${task.jlNo}_${safeRecordType}.json"
 
         val jsonContent = """
 {
@@ -236,11 +240,11 @@ object LandRecordStorageManager {
         if (task.downloadFormat == com.example.data.model.DownloadFormat.IMAGE) {
             saveImageToGallery(context, recordFileName, simulatedContent, formatMime)
         } else {
-            saveFileToLandRecords(context, recordFileName, simulatedContent, formatMime)
+            saveFileToLandRecords(context, recordFileName, simulatedContent, formatMime, subDir)
         }
 
         // Also save readable text ledger for the mouza
-        val textFileName = "${upazila.nameEn}_${safeMouzaName}_JL${task.jlNo}_${safeRecordType}.txt"
+        val textFileName = "${safeUpazilaName}_${safeMouzaName}_JL${task.jlNo}_${safeRecordType}.txt"
         val textContent = """
 ====================================================
   গণপ্রজাতন্ত্রী বাংলাদেশ সরকার - ভূমি রেকর্ড ও জরিপ
@@ -254,12 +258,12 @@ object LandRecordStorageManager {
 ডাউনলোড ফরম্যাট: ${task.downloadFormat.label}
 মোট খতিয়ান সংখ্যা: ${task.totalKhatians} টি
 সংরক্ষণ সময়: ${task.timestamp}
-অবস্থান: ফোন মেমোরি / Download / LandRecords /
+অবস্থান: ফোন মেমোরি / Download / LandRecords / $safeUpazilaName /
 ====================================================
 """.trimIndent()
 
-        saveFileToLandRecords(context, textFileName, textContent, "text/plain")
-        return saveFileToLandRecords(context, jsonFileName, jsonContent, "application/json")
+        saveFileToLandRecords(context, textFileName, textContent, "text/plain", subDir)
+        return saveFileToLandRecords(context, jsonFileName, jsonContent, "application/json", subDir)
     }
 
     /**
@@ -302,9 +306,12 @@ object LandRecordStorageManager {
         }
         jsonBuilder.append("  ]\n")
         jsonBuilder.append("}\n")
+        val safeUpazilaName = upazila.nameEn.replace("[^a-zA-Z0-9]".toRegex(), "_")
+        val subDir = "$LAND_RECORDS_SUBDIR/$safeUpazilaName"
+
         val jsonContent = jsonBuilder.toString()
         val jsonFileName = "$baseName.json"
-        val jsonResult = saveFileToLandRecords(context, jsonFileName, jsonContent, "application/json")
+        val jsonResult = saveFileToLandRecords(context, jsonFileName, jsonContent, "application/json", subDir)
 
         // 2. Generate Master Readable Text Ledger
         val textBuilder = StringBuilder()
@@ -318,7 +325,7 @@ object LandRecordStorageManager {
         textBuilder.append("মোট মৌজা সংখ্যা: ${archive.totalMouzasCount} টি\n")
         textBuilder.append("মোট খতিয়ান সংখ্যা: ${archive.totalKhatiansCount} টি\n")
         textBuilder.append("আর্কাইভ ফাইল আকার: ${archive.totalSizeMb}\n")
-        textBuilder.append("সংরক্ষণ ফোল্ডার: ফোন মেমোরি / Download / LandRecords /\n\n")
+        textBuilder.append("সংরক্ষণ ফোল্ডার: ফোন মেমোরি / Download / LandRecords / $safeUpazilaName /\n\n")
         textBuilder.append("------------------------------------------------------------------------\n")
         textBuilder.append("নং  | মৌজার নাম (বাংলা/ইংরেজি)        | জে.এল নং | রেকর্ড ধরন | খতিয়ান\n")
         textBuilder.append("------------------------------------------------------------------------\n")
@@ -343,7 +350,7 @@ object LandRecordStorageManager {
         }
         val csvContent = csvBuilder.toString()
         val csvFileName = "$baseName.csv"
-        val csvResult = saveFileToLandRecords(context, csvFileName, csvContent, "text/csv")
+        val csvResult = saveFileToLandRecords(context, csvFileName, csvContent, "text/csv", subDir)
 
         val filesList = listOf(
             jsonResult.primaryDisplayPath,
