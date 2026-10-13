@@ -1,8 +1,6 @@
 package com.example.util
 
 import android.util.Log
-import com.google.firebase.auth.FirebaseAuth
-import org.json.JSONArray
 import org.json.JSONObject
 
 enum class OperationType(val value: String) {
@@ -15,22 +13,10 @@ enum class OperationType(val value: String) {
 }
 
 fun handleFirestoreError(exception: Exception, operationType: OperationType, path: String?): String {
-    val auth = FirebaseAuth.getInstance()
-    val currentUser = auth.currentUser
-
-    val providerInfoList = currentUser?.providerData?.map { provider ->
-        JSONObject().apply {
-            put("providerId", provider.providerId)
-            put("email", provider.email)
-        }
-    } ?: emptyList()
-
+    // Auth is disabled as per user request
     val authInfoJson = JSONObject().apply {
-        put("userId", currentUser?.uid)
-        put("email", currentUser?.email)
-        put("emailVerified", currentUser?.isEmailVerified)
-        put("tenantId", currentUser?.tenantId)
-        put("providerInfo", JSONArray(providerInfoList))
+        put("userId", "anonymous_auth_disabled")
+        put("status", "Auth disabled by user")
     }
 
     val errorInfoJson = JSONObject().apply {

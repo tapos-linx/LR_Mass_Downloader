@@ -74,18 +74,16 @@ jobs:
       - name: Prepare APK Release Assets
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/LRMassDownloader.apk
-          cp app/build/outputs/apk/debug/app-debug.apk "release-output/LR Mass Downloader.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/LR_Mass_Downloader.apk
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/app-release.apk
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/LRMassDownloader-${{ env.VERSION_TAG }}.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/KhotiyanBD.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/KhotiyanBD_Latest.apk
+          cp app/build/outputs/apk/debug/app-debug.apk release-output/KhotiyanBD_${{ env.VERSION_TAG }}.apk
           ls -lh release-output/
 
       - name: Upload APK Artifact to GitHub Actions
         uses: actions/upload-artifact@v4
         with:
-          name: LRMassDownloader-${{ env.VERSION_TAG }}-APK
-          path: release-output/LRMassDownloader.apk
+          name: KhotiyanBD-${{ env.VERSION_TAG }}-APK
+          path: release-output/KhotiyanBD.apk
           retention-days: 90
 
       - name: Publish GitHub Release (One-Click Download & Latest)
@@ -93,20 +91,18 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
           tag_name: ${{ env.VERSION_TAG }}
-          name: "LR Mass Downloader ${{ env.VERSION_TAG }} (Build ${{ env.VERSION_CODE }})"
+          name: "Khotiyan BD ${{ env.VERSION_TAG }} (Build ${{ env.VERSION_CODE }})"
           make_latest: true
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ### 📜 LR Mass Downloader - Automated Production Release ${{ env.VERSION_TAG }}
+            ### 📜 Khotiyan BD - Automated Production Release ${{ env.VERSION_TAG }}
             
-            #### 🚀 One-Click APK Direct Production Download Links (No 404):
-            - 👉 [**Download LR Mass Downloader.apk (Official Direct Asset)**](https://github.com/${{ github.repository }}/releases/latest/download/LR%20Mass%20Downloader.apk)
-            - 👉 [**Download LR_Mass_Downloader.apk**](https://github.com/${{ github.repository }}/releases/latest/download/LR_Mass_Downloader.apk)
-            - 👉 [**Download LRMassDownloader.apk (Latest)**](https://github.com/${{ github.repository }}/releases/latest/download/LRMassDownloader.apk)
-            - 👉 [**Download app-release.apk**](https://github.com/${{ github.repository }}/releases/latest/download/app-release.apk)
-            - 📦 [Download Version Tagged APK (${{ env.VERSION_TAG }})](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION_TAG }}/LRMassDownloader-${{ env.VERSION_TAG }}.apk)
+            #### 🚀 One-Click APK Direct Production Download Links:
+            - 👉 [**Download KhotiyanBD.apk (Recommended)**](https://github.com/${{ github.repository }}/releases/latest/download/KhotiyanBD.apk)
+            - 👉 [**Download KhotiyanBD_Latest.apk**](https://github.com/${{ github.repository }}/releases/latest/download/KhotiyanBD_Latest.apk)
+            - 📦 [Download Version Tagged APK (${{ env.VERSION_TAG }})](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION_TAG }}/KhotiyanBD_${{ env.VERSION_TAG }}.apk)
             
             ---
             
@@ -114,24 +110,17 @@ jobs:
             - **Version Name:** `${{ env.VERSION_NAME }}`
             - **Version Code (Build):** `${{ env.VERSION_CODE }}`
             - **Git Commit:** `${{ github.sha }}`
-            - **Target:** Bangladesh Land Records & Survey (DLR&S)
             
-            #### ⚡ Fast 1-2 Second Installation Note:
-            When prompted by Android / Google Play Protect (*"Unrecognized app"*), tap **"Install anyway"** to bypass cloud deep-scanning and install in **1–2 seconds**.
+            #### ⚡ Installation Note:
+            When prompted by Android / Google Play Protect, tap **"Install anyway"** to bypass cloud deep-scanning for faster installation.
             
             #### ✨ Key Capabilities:
             - **Complete Dataset**: Cumilla (17 Upazilas) & Brahmanbaria (9 Upazilas)
-            - **Cascading Hierarchy**: District ➔ Upazila ➔ Mouza
-            - **Automated 7-Mouza Sequential Queue**: Anti-repeat algorithm prevents duplicate downloads
-            - **One-Click All Document Types**: CS, SA, RS, BRS/BS
-            - **Master Archive Synthesis**: Consolidated JSON, human-readable TXT ledger, CSV table
-            - **Phone Storage Integration**: Saved to `Download/LandRecords/` with automatic MediaScanner indexing
-            - **Automatic Cache Cleanup**: Clears temporary memory post-export
+            - **Automated Queue**: Anti-repeat algorithm prevents duplicate downloads
+            - **Master Archive**: Consolidated JSON, TXT, and CSV exports
           files: |
-            release-output/LRMassDownloader.apk
-            release-output/LR Mass Downloader.apk
-            release-output/LR_Mass_Downloader.apk
-            release-output/app-release.apk
-            release-output/LRMassDownloader-${{ env.VERSION_TAG }}.apk
+            release-output/KhotiyanBD.apk
+            release-output/KhotiyanBD_Latest.apk
+            release-output/KhotiyanBD_${{ env.VERSION_TAG }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

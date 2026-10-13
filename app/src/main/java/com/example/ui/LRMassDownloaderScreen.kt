@@ -14,6 +14,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
 import java.util.Locale
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -77,7 +78,6 @@ import androidx.compose.material.icons.filled.GetApp
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -238,15 +238,7 @@ fun LRMassDownloaderScreen(
                     .background(Slate50),
                 topBar = {
                     GovTechHeader(
-                        onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) },
-                        onLogout = {
-                            signOut(
-                                context = context,
-                                credentialManager = androidx.credentials.CredentialManager.create(context),
-                                onSignOutComplete = { /* MainActivity handles state via AuthStateListener */ },
-                                scope = kotlinx.coroutines.MainScope()
-                            )
-                        }
+                        onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) }
                     )
                 },
                 bottomBar = {
@@ -313,13 +305,26 @@ fun LRMassDownloaderScreen(
                     }
                 }
             ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    // Global Progress Bar: Indicates total percentage of completed downloads across the active queue
+                    AnimatedVisibility(visible = totalTasks > 0 && completedTasks < totalTasks) {
+                        GlobalDownloadProgressBar(
+                            progress = overallProgress / 100f,
+                            completedCount = completedTasks,
+                            totalCount = totalTasks
+                        )
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
             item { Spacer(modifier = Modifier.height(2.dp)) }
 
             // Notification Banner for Cache Clearance
@@ -474,9 +479,10 @@ fun LRMassDownloaderScreen(
                     )
                 }
             }
+                }
+            }
         }
     }
-}
 }
 
     // Saved Records Vault Dialog
@@ -485,7 +491,8 @@ fun LRMassDownloaderScreen(
             records = savedRecords,
             onDismiss = { viewModel.setShowHistoryDialog(false) },
             onDelete = { viewModel.deleteSavedRecord(it) },
-            onClearAll = { viewModel.clearAllSavedRecords() }
+            onClearAll = { viewModel.clearAllSavedRecords() },
+            onExportAll = { viewModel.downloadAllSessionRecordsToPhone(context) }
         )
     }
 
@@ -556,6 +563,69 @@ fun shareMasterFile(context: Context, archive: MasterArchive) {
         context.startActivity(chooser)
     } catch (e: Exception) {
         Toast.makeText(context, "Could not open share sheet: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+fun GlobalDownloadProgressBar(
+    progress: Float,
+    completedCount: Int,
+    totalCount: Int
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.White,
+        shadowElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.CloudDownload,
+                        contentDescription = null,
+                        tint = EmeraldPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Global Queue Progress",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Slate800
+                    )
+                }
+                Text(
+                    text = "$completedCount / $totalCount Completed",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = EmeraldDark
+                )
+            }
+
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(6.dp)),
+                color = EmeraldPrimary,
+                trackColor = EmeraldContainer
+            )
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(
+                    text = "${(progress * 100).toInt()}% Total",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black),
+                    color = EmeraldPrimary
+                )
+            }
+        }
     }
 }
 
@@ -795,12 +865,12 @@ fun MasterArchiveCard(
                         )
                     }
                     Text(
-                        text = "📁 Internal Storage > Download > LandRecords /",
+                        text = "📁 Internal Storage > Download/Pictures > LandRecords /",
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold),
                         color = Slate900
                     )
                     Text(
-                        text = "আপনার ফোনের 'Files' বা 'My Files' অ্যাপ ওপেন করে 'Downloads' ফোল্ডারের ভেতর 'LandRecords' সাব-ফোল্ডারে মাস্টার আর্কাইভ ও সকল মৌজা ফাইল পাবেন।",
+                        text = "আপনার ফোনের 'Files' অথবা 'Gallery' (গ্যালারি) অ্যাপ ওপেন করুন। 'Downloads' বা 'Pictures' ফোল্ডারের ভেতর 'LandRecords' সাব-ফোল্ডারে মাস্টার আর্কাইভ ও সকল মৌজা ফাইল পাবেন।",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = EmeraldDark
                     )
@@ -839,8 +909,9 @@ fun MasterArchiveCard(
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
+                    val btnLabel = if (archive.isDownloadedToPhone) "Re-Save to Phone (Downloads/Gallery)" else "One-Click Save to Phone (Downloads/Gallery)"
                     Text(
-                        text = if (archive.isDownloadedToPhone) "Re-Save to Download/LandRecords (Auto-Clears Cache)" else "One-Click Save to Phone Downloads (Auto-Clears Cache)",
+                        text = btnLabel,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.ExtraBold)
                     )
                 }
@@ -862,7 +933,7 @@ fun MasterArchiveCard(
                     ) {
                         Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Open Download/LandRecords Folder", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Open Downloads/Gallery Folder", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                     }
 
                     Row(
@@ -1132,8 +1203,7 @@ fun GovTechHeader(
     onOpenKhotiyanForm: () -> Unit = {},
     onOpenQueueStatus: () -> Unit = {},
     onOpenSavedRecords: () -> Unit = {},
-    onOpenApkInfo: () -> Unit,
-    onLogout: () -> Unit
+    onOpenApkInfo: () -> Unit
 ) {
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     Surface(
@@ -1213,7 +1283,7 @@ fun GovTechHeader(
                             )
                         }
                         Text(
-                            text = "LR get BD",
+                            text = "Khotiyan BD",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 20.sp
@@ -1248,26 +1318,9 @@ fun GovTechHeader(
                             modifier = Modifier.size(16.dp),
                             tint = AmberAccent
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "Download APK",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onLogout,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.1f))
-                            .testTag("logout_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Logout,
-                            contentDescription = "Logout",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -1286,7 +1339,7 @@ fun ApkDownloadDialog(
 
     // Official GitHub Releases direct asset download pattern
     val downloadUrl = "https://github.com/$customRepo/releases/latest/download/LR%20Mass%20Downloader.apk"
-    val directUrlNoSpaces = "https://github.com/$customRepo/releases/latest/download/LRMassDownloader.apk"
+    val directUrlNoSpaces = "https://github.com/$customRepo/releases/latest/download/KhotiyanBD.apk"
     val actionsUrl = "https://github.com/$customRepo/actions"
     val releasesUrl = "https://github.com/$customRepo/releases"
 
@@ -1302,7 +1355,7 @@ fun ApkDownloadDialog(
             val sourceDir = context.applicationInfo?.sourceDir
             if (sourceDir != null && File(sourceDir).exists()) {
                 val srcFile = File(sourceDir)
-                val targetFile = File(context.cacheDir, "LRMassDownloader-v$currentVersion.apk")
+                val targetFile = File(context.cacheDir, "KhotiyanBD-v$currentVersion.apk")
                 if (!targetFile.exists() || targetFile.length() != srcFile.length()) {
                     srcFile.copyTo(targetFile, overwrite = true)
                 }
@@ -1342,8 +1395,8 @@ fun ApkDownloadDialog(
     fun downloadApkToLocalStorage(): File? {
         return try {
             val apkFile = getLocalApkFile()
-            val fileName = "LR get BD.apk"
-            val altFileName = "LRMassDownloader.apk"
+            val fileName = "Khotiyan BD.apk"
+            val altFileName = "KhotiyanBD.apk"
             val mimeType = "application/vnd.android.package-archive"
             var savedPath = ""
 
@@ -1380,7 +1433,7 @@ fun ApkDownloadDialog(
                     targetFile.writeBytes(apkBytes)
                     savedPath = targetFile.absolutePath
 
-                    // Also save alias "LRMassDownloader.apk" for convenience
+                    // Also save alias "KhotiyanBD.apk" for convenience
                     val aliasFile = File(publicDownloads, altFileName)
                     aliasFile.writeBytes(apkBytes)
 
@@ -1720,13 +1773,13 @@ fun ApkDownloadDialog(
                     try {
                         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                         val request = DownloadManager.Request(Uri.parse(downloadUrl))
-                            .setTitle("LR get BD.apk")
-                            .setDescription("Downloading LR Mass Downloader APK directly...")
+                            .setTitle("Khotiyan BD.apk")
+                            .setDescription("Downloading Khotiyan BD.apk directly...")
                             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "LR get BD.apk")
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "Khotiyan BD.apk")
                             .setMimeType("application/vnd.android.package-archive")
                         dm.enqueue(request)
-                        Toast.makeText(context, "📥 ডাউনলোড শুরু হয়েছে: Download/LR get BD.apk", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "📥 ডাউনলোড শুরু হয়েছে: Download/Khotiyan BD.apk", Toast.LENGTH_SHORT).show()
                     } catch (ignored: Exception) {}
 
                     try {
@@ -1971,7 +2024,7 @@ fun CascadingHierarchyCard(
                         Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Select All Documents (CS+SA+RS+BRS)",
+                            text = "Select All Documents (CS, SA, RS, BRS, CR, SSC, OTHERS)",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         )
                     }
@@ -3359,12 +3412,14 @@ fun DownloadTaskCard(task: DownloadTask) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SavedRecordsDialog(
     records: List<SavedRecord>,
     onDismiss: () -> Unit,
     onDelete: (String) -> Unit,
-    onClearAll: () -> Unit
+    onClearAll: () -> Unit,
+    onExportAll: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -3401,55 +3456,104 @@ fun SavedRecordsDialog(
                     )
                 }
             } else {
+                val groupedRecords = remember(records) {
+                    records.groupBy { it.upazilaNameBn }
+                }
+
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(340.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(records, key = { it.id }) { rec ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Slate100)
-                                .border(1.dp, Slate200, RoundedCornerShape(12.dp))
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(
-                                        text = rec.mouzaNameBn,
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = Slate900
-                                    )
-                                    Text(
-                                        text = rec.recordType,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = EmeraldPrimary),
-                                        modifier = Modifier
-                                            .background(EmeraldContainer, RoundedCornerShape(4.dp))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                    )
-                                }
-                                Text(
-                                    text = "${rec.districtNameBn} • ${rec.upazilaNameBn} • J.L. ${rec.jlNo}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Slate600
+                    groupedRecords.forEach { (upazilaName, upazilaRecords) ->
+                        stickyHeader {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Slate200.copy(alpha = 0.9f))
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Layers,
+                                    contentDescription = null,
+                                    tint = Slate600,
+                                    modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = "খতিয়ান সংখ্যা: ${rec.khatianCount} • আকার: ${rec.fileSizeFormatted}",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    color = Slate400
+                                    text = upazilaName,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Black),
+                                    color = Slate800
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                Text(
+                                    text = "${upazilaRecords.size} Mouzas",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Slate500
                                 )
                             }
+                        }
 
-                            IconButton(onClick = { onDelete(rec.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Slate400)
+                        items(upazilaRecords, key = { it.id }) { rec ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Slate100)
+                                    .border(1.dp, Slate200.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = rec.mouzaNameBn,
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = Slate900
+                                        )
+                                        Text(
+                                            text = rec.recordType,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = EmeraldPrimary),
+                                            modifier = Modifier
+                                                .background(EmeraldContainer, RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "${rec.districtNameBn} • J.L. ${rec.jlNo}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Slate600
+                                    )
+                                    Text(
+                                        text = "খতিয়ান সংখ্যা: ${rec.khatianCount} • আকার: ${rec.fileSizeFormatted}",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        color = Slate400
+                                    )
+                                }
+
+                                IconButton(onClick = { onDelete(rec.id) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Slate400)
+                                }
                             }
                         }
                     }
+                }
+            }
+        },
+        dismissButton = {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            if (records.isNotEmpty()) {
+                OutlinedButton(
+                    onClick = onExportAll,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldDark),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Export All to Phone Memory")
                 }
             }
         },
@@ -3458,7 +3562,7 @@ fun SavedRecordsDialog(
                 onClick = onDismiss,
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
             ) {
-                Text("Close")
+                Text("Done")
             }
         }
     )

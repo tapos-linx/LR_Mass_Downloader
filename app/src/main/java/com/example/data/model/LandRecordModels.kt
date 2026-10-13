@@ -7,7 +7,13 @@ enum class RecordType(val code: String, val bengaliName: String, val subtitle: S
     CS("CS", "ক্যাডাস্ট্রাল", "১৮৮৮-১৯৪০ জরিপ"),
     SA("SA", "স্টেট একুইজিশন", "১৯৫৬-১৯৬২ রেকর্ড"),
     RS("RS", "রিভিশনাল", "আধুনিক খতিয়ান (Default)"),
-    BRS("BRS", "বাংলাদেশ সিটি", "ডিজিটাল বিআরএস")
+    BRS("BRS", "বাংলাদেশ সিটি", "ডিজিটাল বিআরএস"),
+    CR("CR", "সিআর", "সিআর রেকর্ড"),
+    SSC("SSC", "এসএসসি", "এসএসসি জরিপ"),
+    VP("VP", "অর্পিত", "অর্পিত সম্পত্তি"),
+    EX("EX", "বিনিময়", "বিনিময় রেকর্ড"),
+    DIARY("DIARY", "ডায়েরি", "দৈনিক ডায়েরি"),
+    OTHERS("OTHERS", "অন্যান্য", "অন্যান্য সকল রেকর্ড")
 }
 
 data class Mouza(
@@ -89,6 +95,18 @@ data class SavedRecord(
     val khatianCount: Int,
     val fileSizeFormatted: String,
     val downloadedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "khatian_records")
+data class KhatianRecord(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val district: String,
+    val upazila: String,
+    val mouza: String,
+    val khatianNumber: String,
+    val recordType: String,
+    val downloadStatus: String, // e.g., "COMPLETED", "FAILED", "PENDING"
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 data class MasterArchive(

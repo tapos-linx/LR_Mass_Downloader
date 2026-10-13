@@ -16,6 +16,7 @@ import com.example.data.model.DownloadTask
 import com.example.data.model.MasterArchive
 import com.example.data.model.Upazila
 import java.io.File
+import java.io.FileInputStream
 
 data class SavedFileResult(
     val primaryDisplayPath: String,
@@ -28,7 +29,9 @@ data class MasterArchiveSaveResult(
     val textPath: String,
     val csvPath: String,
     val allFiles: List<String>,
-    val filePreview: String
+    val filePreview: String,
+    val isPublicDownloads: Boolean,
+    val primaryDisplayPath: String
 )
 
 object LandRecordStorageManager {
@@ -38,7 +41,7 @@ object LandRecordStorageManager {
 
     /**
      * Writes a file to the public Download/LandRecords folder on phone memory.
-     * Uses MediaStore on Android 10+ (API 29+) and direct File I/O + MediaScanner on all versions.
+     * Uses MediaStore on Android 10+ (API 29+) and direct File I/O + MediaScanner on older versions.
      */
     fun saveFileToLandRecords(
         context: Context,
@@ -48,6 +51,7 @@ object LandRecordStorageManager {
     ): SavedFileResult {
         var resolvedPath = ""
         var resolvedUri: Uri? = null
+        var isPublic = false
 
         // 1. Android 10+ (API 29+) MediaStore Downloads API
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -91,37 +95,39 @@ object LandRecordStorageManager {
                     contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
                     resolver.update(uri, contentValues, null, null)
                     resolvedUri = uri
-                    resolvedPath = "/storage/emulated/0/Download/$LAND_RECORDS_SUBDIR/$fileName"
+                    resolvedPath = "Download/$LAND_RECORDS_SUBDIR/$fileName"
+                    isPublic = true
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        } else {
+            // 2. Legacy Direct File writing to public storage (/storage/emulated/0/Download/LandRecords/)
+            try {
+                val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val landRecordsFolder = File(publicDownloads, LAND_RECORDS_SUBDIR)
+                if (!landRecordsFolder.exists()) {
+                    landRecordsFolder.mkdirs()
+                }
+
+                val directFile = File(landRecordsFolder, fileName)
+                directFile.writeText(content, Charsets.UTF_8)
+                resolvedPath = directFile.absolutePath
+                isPublic = true
+
+                // Broadcast to Android Media Scanner so all file browser apps immediately index it
+                MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(directFile.absolutePath),
+                    arrayOf(mimeType),
+                    null
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
 
-        // 2. Direct File writing to public storage (/storage/emulated/0/Download/LandRecords/)
-        try {
-            val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val landRecordsFolder = File(publicDownloads, LAND_RECORDS_SUBDIR)
-            if (!landRecordsFolder.exists()) {
-                landRecordsFolder.mkdirs()
-            }
-
-            val directFile = File(landRecordsFolder, fileName)
-            directFile.writeText(content, Charsets.UTF_8)
-            resolvedPath = directFile.absolutePath
-
-            // Broadcast to Android Media Scanner so all file browser apps immediately index it
-            MediaScannerConnection.scanFile(
-                context,
-                arrayOf(directFile.absolutePath),
-                arrayOf(mimeType),
-                null
-            )
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-
-        // 3. Fallback to external files if public access is restricted by device policy
+        // 3. Fallback to external files if public access failed
         if (resolvedPath.isEmpty()) {
             try {
                 val appDownloads = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), LAND_RECORDS_SUBDIR)
@@ -129,6 +135,7 @@ object LandRecordStorageManager {
                 val fallbackFile = File(appDownloads, fileName)
                 fallbackFile.writeText(content, Charsets.UTF_8)
                 resolvedPath = fallbackFile.absolutePath
+                isPublic = false
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -137,8 +144,47 @@ object LandRecordStorageManager {
         return SavedFileResult(
             primaryDisplayPath = if (resolvedPath.isNotEmpty()) resolvedPath else "Download/LandRecords/$fileName",
             mediaStoreUri = resolvedUri,
-            isPublicDownloads = true
+            isPublicDownloads = isPublic
         )
+    }
+
+    /**
+     * Specifically exports an image to the public Gallery using MediaStore.
+     */
+    fun saveImageToGallery(
+        context: Context,
+        fileName: String,
+        content: String,
+        mimeType: String = "image/jpeg"
+    ): Uri? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/LandRecords")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(content.toByteArray(Charsets.UTF_8))
+                }
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, contentValues, null, null)
+                return uri
+            }
+        } else {
+            val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+            val folder = File(picturesDir, "LandRecords")
+            if (!folder.exists()) folder.mkdirs()
+            val file = File(folder, fileName)
+            file.writeText(content, Charsets.UTF_8)
+            MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), arrayOf(mimeType), null)
+            return Uri.fromFile(file)
+        }
+        return null
     }
 
     /**
@@ -187,7 +233,11 @@ object LandRecordStorageManager {
                 "Record Type: ${task.recordTypeLabel}\n" +
                 "Khatian Count: ${task.totalKhatians}\n"
         
-        saveFileToLandRecords(context, recordFileName, simulatedContent, formatMime)
+        if (task.downloadFormat == com.example.data.model.DownloadFormat.IMAGE) {
+            saveImageToGallery(context, recordFileName, simulatedContent, formatMime)
+        } else {
+            saveFileToLandRecords(context, recordFileName, simulatedContent, formatMime)
+        }
 
         // Also save readable text ledger for the mouza
         val textFileName = "${upazila.nameEn}_${safeMouzaName}_JL${task.jlNo}_${safeRecordType}.txt"
@@ -306,7 +356,9 @@ object LandRecordStorageManager {
             textPath = textResult.primaryDisplayPath,
             csvPath = csvResult.primaryDisplayPath,
             allFiles = filesList,
-            filePreview = textContent
+            filePreview = textContent,
+            isPublicDownloads = jsonResult.isPublicDownloads,
+            primaryDisplayPath = jsonResult.primaryDisplayPath
         )
     }
 
@@ -356,7 +408,7 @@ object LandRecordStorageManager {
         if (!opened) {
             Toast.makeText(
                 context,
-                "Please open your phone's 'Files' or 'Downloads' app to see the 'LandRecords' folder.",
+                "Saved to: Download/LandRecords/\nOpen your 'Files' app to view.",
                 Toast.LENGTH_LONG
             ).show()
         }

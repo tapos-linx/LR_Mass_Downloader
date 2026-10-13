@@ -11,6 +11,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.example.data.model.DownloadTask
 import com.example.data.model.SavedRecord
+import com.example.data.model.KhatianRecord
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -28,11 +29,12 @@ interface SavedRecordDao {
     suspend fun clearAllRecords()
 }
 
-@Database(entities = [SavedRecord::class, DownloadTask::class], version = 3, exportSchema = false)
+@Database(entities = [SavedRecord::class, DownloadTask::class, KhatianRecord::class], version = 4, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun savedRecordDao(): SavedRecordDao
     abstract fun downloadQueueDao(): DownloadQueueDao
+    abstract fun khatianRecordDao(): KhatianRecordDao
 
     companion object {
         @Volatile

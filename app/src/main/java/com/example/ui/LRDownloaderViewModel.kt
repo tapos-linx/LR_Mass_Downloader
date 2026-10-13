@@ -22,13 +22,6 @@ import com.example.data.model.Upazila
 import com.example.data.model.UpazilaFetchInfo
 import com.example.data.repository.DownloadRepository
 import com.example.data.worker.DownloadWorkManagerHelper
-import com.example.data.model.FirestoreDownloadTask
-import com.example.data.model.FirestoreSavedRecord
-import com.example.data.repository.FirebaseRepository
-import com.google.firebase.Firebase
-import com.google.firebase.Timestamp
-import com.google.firebase.firestore.firestore
-import kotlinx.coroutines.flow.onStart
 import androidx.work.WorkInfo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -84,9 +77,6 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
 
     private val db = AppDatabase.getDatabase(application)
     private val repository = DownloadRepository(db.savedRecordDao(), db.downloadQueueDao())
-    
-    private val firestoreDb = Firebase.firestore(application.getString(R.string.firestore_database_id))
-    private val firebaseRepository = FirebaseRepository(firestoreDb)
 
     val savedRecords: StateFlow<List<SavedRecord>> = repository.savedRecords
         .stateIn(
@@ -101,13 +91,8 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
     // Bounded Concurrency Limiter: strictly max 2 concurrent downloads
     private val concurrencyLimiter = Semaphore(2)
     private val taskJobs = mutableMapOf<String, Job>()
-
+    
     init {
-        // Sync user profile on start
-        viewModelScope.launch {
-            firebaseRepository.syncUserProfile()
-        }
-
         // Anti-Freeze Core: Observe WorkManager active state and real-time progress
         DownloadWorkManagerHelper.getPrimaryWorkInfoFlow(application).onEach { workInfo ->
             val isRunning = workInfo?.state == WorkInfo.State.RUNNING || workInfo?.state == WorkInfo.State.ENQUEUED
@@ -153,59 +138,8 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
                 if (persistentQueue.isNotEmpty() && persistentQueue.all { it.status == TaskStatus.COMPLETED }) {
                     checkAndTriggerNextBatch()
                 }
-
-                // Cloud Sync: Update download tasks in Firestore
-                viewModelScope.launch {
-                    persistentQueue.forEach { task ->
-                        firebaseRepository.updateDownloadTask(
-                            FirestoreDownloadTask(
-                                id = task.id,
-                                mouzaId = task.mouzaId,
-                                mouzaNameBn = task.mouzaNameBn,
-                                mouzaNameEn = task.mouzaNameEn,
-                                jlNo = task.jlNo,
-                                upazilaNameBn = task.upazilaNameBn,
-                                districtNameBn = task.districtNameBn,
-                                recordTypes = task.recordTypes.map { it.code },
-                                downloadFormat = task.downloadFormat.name,
-                                status = task.status.name,
-                                progress = task.progress,
-                                totalKhatians = task.totalKhatians,
-                                downloadedKhatians = task.downloadedKhatians,
-                                fileSizeBytes = task.fileSizeBytes,
-                                speedKbps = task.speedKbps,
-                                batchNumber = task.batchNumber,
-                                timestamp = Timestamp(task.timestamp / 1000, ((task.timestamp % 1000) * 1000000).toInt()),
-                                referenceId = task.referenceId
-                            )
-                        )
-                    }
-                }
             }.launchIn(viewModelScope)
         }
-
-        // Cloud Sync: Observe saved records and update Firestore
-        repository.savedRecords.onEach { records ->
-            viewModelScope.launch {
-                records.forEach { record ->
-                    firebaseRepository.saveRecord(
-                        FirestoreSavedRecord(
-                            id = record.id,
-                            mouzaId = record.mouzaId,
-                            mouzaNameBn = record.mouzaNameBn,
-                            mouzaNameEn = record.mouzaNameEn,
-                            jlNo = record.jlNo,
-                            upazilaNameBn = record.upazilaNameBn,
-                            districtNameBn = record.districtNameBn,
-                            recordType = record.recordType,
-                            khatianCount = record.khatianCount,
-                            fileSizeFormatted = record.fileSizeFormatted,
-                            downloadedAt = Timestamp(record.downloadedAt / 1000, ((record.downloadedAt % 1000) * 1000000).toInt())
-                        )
-                    )
-                }
-            }
-        }.launchIn(viewModelScope)
     }
 
     val allDistricts: List<District> = LandRecordsDataset.districts
@@ -273,7 +207,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             val batchSize = _uiState.value.batchSize
             val totalBatchesCount = (foundMouzaCount + batchSize - 1) / batchSize
 
-            val firstSevenIds = upazila.mouzas.take(batchSize).map { it.id }.toSet()
+            val allMouzaIds = upazila.mouzas.map { it.id }.toSet()
 
             val fetchInfo = UpazilaFetchInfo(
                 upazilaId = upazila.id,
@@ -282,7 +216,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
                 districtNameBn = district.nameBn,
                 totalMouzaCount = foundMouzaCount,
                 batchCount = totalBatchesCount,
-                message = "Upazila Survey Index: Found $foundMouzaCount mouzas in ${upazila.nameBn}."
+                message = "Upazila Survey Index: Found $foundMouzaCount mouzas in ${upazila.nameBn}. All mouzas selected."
             )
 
             _uiState.value = _uiState.value.copy(
@@ -290,12 +224,13 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
                 isFetchingUpazila = false,
                 upazilaFetchInfo = fetchInfo,
                 targetTotalMouzas = foundMouzaCount,
-                selectedMouzaIds = firstSevenIds,
+                selectedMouzaIds = allMouzaIds,
                 downloadedMouzaIds = emptySet(),
                 currentBatchNumber = 1,
                 masterArchive = null,
                 searchQuery = "",
-                cacheNotificationMessage = null
+                cacheNotificationMessage = null,
+                selectedRecordTypes = RecordType.values().toSet()
             )
         }
     }
@@ -398,7 +333,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             jlNo = mouza.jlNo,
             upazilaNameBn = upazila.nameBn,
             districtNameBn = district.nameBn,
-            recordTypes = recordTypes.ifEmpty { setOf(RecordType.RS) },
+            recordTypes = recordTypes.ifEmpty { RecordType.values().toSet() },
             downloadFormat = _uiState.value.selectedDownloadFormat,
             status = TaskStatus.PENDING,
             progress = 0,
@@ -434,7 +369,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
         if (referenceIds.isEmpty()) return
         val timestamp = System.currentTimeMillis()
         val currentBatch = _uiState.value.currentBatchNumber
-        val effectiveRecordTypes = recordTypes.ifEmpty { setOf(RecordType.RS) }
+        val effectiveRecordTypes = recordTypes.ifEmpty { RecordType.values().toSet() }
 
         val newTasks = referenceIds.mapIndexed { index, refId ->
             val cleanId = refId.trim()
@@ -723,20 +658,53 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
                 queueTasks = _uiState.value.queue
             )
 
-            LandRecordStorageManager.clearCacheAndMemory(context)
+            val shouldClearCache = district.id != "cumilla" && district.id != "brahmanbaria"
+            if (shouldClearCache) {
+                LandRecordStorageManager.clearCacheAndMemory(context)
+            }
+
+            val saveMessage = if (saveResult.isPublicDownloads) {
+                "Master & Mouza files saved to Download/LandRecords/! Cache cleared."
+            } else {
+                "Saved to app-specific storage (Download/LandRecords) due to restricted permissions. Cache cleared."
+            }
 
             _uiState.value = _uiState.value.copy(
                 masterArchive = archive.copy(
                     isDownloadedToPhone = true,
-                    phoneSavedPath = saveResult.jsonPath,
+                    phoneSavedPath = saveResult.primaryDisplayPath,
                     textFileSavedPath = saveResult.textPath,
                     csvFileSavedPath = saveResult.csvPath,
                     savedFilesList = saveResult.allFiles,
                     fileContentPreview = saveResult.filePreview
                 ),
                 isShowingSaveSuccessDialog = true,
-                cacheNotificationMessage = "Master & Mouza files saved to Download/LandRecords/! Cache cleared."
+                cacheNotificationMessage = saveMessage
             )
+        }
+    }
+
+    fun downloadAllSessionRecordsToPhone(context: Context) {
+        val upazila = currentUpazila ?: return
+        val district = currentDistrict ?: return
+        val completedTasks = _uiState.value.queue.filter { it.status == TaskStatus.COMPLETED }
+        
+        if (completedTasks.isEmpty()) {
+            Toast.makeText(context, "No completed records in current session to download.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        viewModelScope.launch {
+            completedTasks.forEach { task ->
+                try {
+                    LandRecordStorageManager.saveMouzaRecordFile(context, task, district, upazila)
+                } catch (e: Exception) { e.printStackTrace() }
+            }
+            
+            // Also refresh master archive
+            downloadMasterFileToPhone(context)
+            
+            Toast.makeText(context, "All ${completedTasks.size} records exported to Downloads/Gallery!", Toast.LENGTH_LONG).show()
         }
     }
 

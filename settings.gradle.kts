@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "LR get BD"
+rootProject.name = "KhotiyanBD_Official"
 
 include(":app")
