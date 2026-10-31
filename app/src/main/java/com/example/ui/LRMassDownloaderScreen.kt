@@ -219,7 +219,7 @@ fun LRMassDownloaderScreen(
 
     when (uiState.currentScreen) {
         AppScreen.QUEUE_STATUS -> {
-            QueueStatusScreen(
+            DownloadQueueScreen(
                 viewModel = viewModel,
                 onNavigateBack = { viewModel.navigateToScreen(AppScreen.DOWNLOADER) },
                 modifier = modifier
@@ -245,6 +245,7 @@ fun LRMassDownloaderScreen(
                             completedCount = completedTasks,
                             downloadingCount = downloadingTasks,
                             failedCount = failedTasks,
+                            onOpenQueueStatus = { viewModel.navigateToScreen(AppScreen.QUEUE_STATUS) },
                             onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) }
                         )
                         // Global Progress Bar: Indicates total percentage of completed downloads across the active queue
