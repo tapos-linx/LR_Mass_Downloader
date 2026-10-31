@@ -11,23 +11,31 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
+import com.example.data.ledger.MasterLedgerEntryEntity
 import com.example.data.model.District
 import com.example.data.model.DownloadTask
 import com.example.data.model.MasterArchive
 import com.example.data.model.Upazila
+import com.example.util.DocumentValidationResult
+import com.example.util.DocumentVerificationEngine
 import java.io.File
-import java.io.FileInputStream
 
 data class SavedFileResult(
     val primaryDisplayPath: String,
     val mediaStoreUri: Uri?,
-    val isPublicDownloads: Boolean
+    val isPublicDownloads: Boolean,
+    val sha256Checksum: String = "",
+    val fileSizeBytes: Long = 0L,
+    val validationResult: DocumentValidationResult? = null
 )
 
 data class MasterArchiveSaveResult(
     val jsonPath: String,
     val textPath: String,
     val csvPath: String,
+    val xlsxPath: String = "",
+    val pdfPath: String = "",
+    val sha256Checksum: String = "",
     val allFiles: List<String>,
     val filePreview: String,
     val isPublicDownloads: Boolean,
@@ -37,16 +45,42 @@ data class MasterArchiveSaveResult(
 object LandRecordStorageManager {
 
     private const val LAND_RECORDS_SUBDIR = "LandRecords"
-    private const val RELATIVE_DOWNLOAD_PATH = "Download/$LAND_RECORDS_SUBDIR/"
+    private const val LRGETBD_ROOT_SUBDIR = "LRgetBD"
 
     /**
-     * Writes a file to the public Download/LandRecords folder on phone memory.
-     * Uses MediaStore on Android 10+ (API 29+) and direct File I/O + MediaScanner on older versions.
+     * Builds the structured archive path required by Section 8:
+     * LRgetBD/<Division>/<District>/<Upazila>/<Mouza_JL>/<SurveyType>/<SubCategory>
      */
-    fun saveFileToLandRecords(
+    fun buildArchiveSubPath(
+        divisionNameEn: String = "Chattogram",
+        districtNameEn: String,
+        upazilaNameEn: String,
+        mouzaNameEn: String,
+        jlNo: String,
+        surveyType: String = "RS",
+        subFolder: String = "Metadata"
+    ): String {
+        val div = sanitizeSegment(divisionNameEn.ifBlank { "Bangladesh" })
+        val dist = sanitizeSegment(districtNameEn.ifBlank { "District" })
+        val upa = sanitizeSegment(upazilaNameEn.ifBlank { "Upazila" })
+        val mouzaJl = "${sanitizeSegment(mouzaNameEn)}_JL_${sanitizeSegment(jlNo)}"
+        val survey = sanitizeSegment(surveyType.ifBlank { "RS" })
+        val leaf = sanitizeSegment(subFolder.ifBlank { "Metadata" })
+        return "$LAND_RECORDS_SUBDIR/$LRGETBD_ROOT_SUBDIR/$div/$dist/$upa/$mouzaJl/$survey/$leaf"
+    }
+
+    private fun sanitizeSegment(raw: String): String {
+        return raw.trim().replace("[^a-zA-Z0-9_\\-]".toRegex(), "_").trim('_').ifEmpty { "Record" }
+    }
+
+    /**
+     * Writes raw bytes to public Download/LandRecords/... while preserving exact original document bytes
+     * and computing cryptographic SHA-256 checksum.
+     */
+    fun saveBytesToLandRecords(
         context: Context,
         fileName: String,
-        content: String,
+        bytes: ByteArray,
         mimeType: String,
         subDir: String = LAND_RECORDS_SUBDIR
     ): SavedFileResult {
@@ -54,13 +88,11 @@ object LandRecordStorageManager {
         var resolvedPath = ""
         var resolvedUri: Uri? = null
         var isPublic = false
+        val sha256 = DocumentVerificationEngine.calculateSha256(bytes)
 
-        // 1. Android 10+ (API 29+) MediaStore Downloads API
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 val resolver = context.contentResolver
-
-                // Query and clean up duplicate/previous entry with the same name if exists
                 val projection = arrayOf(MediaStore.MediaColumns._ID)
                 val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
                 val selectionArgs = arrayOf(fileName, relativePath)
@@ -90,7 +122,7 @@ object LandRecordStorageManager {
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                 if (uri != null) {
                     resolver.openOutputStream(uri, "wt")?.use { stream ->
-                        stream.write(content.toByteArray(Charsets.UTF_8))
+                        stream.write(bytes)
                         stream.flush()
                     }
                     contentValues.clear()
@@ -104,7 +136,6 @@ object LandRecordStorageManager {
                 e.printStackTrace()
             }
         } else {
-            // 2. Legacy Direct File writing to public storage (/storage/emulated/0/Download/LandRecords/)
             try {
                 val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 val targetFolder = File(publicDownloads, subDir)
@@ -113,11 +144,10 @@ object LandRecordStorageManager {
                 }
 
                 val directFile = File(targetFolder, fileName)
-                directFile.writeText(content, Charsets.UTF_8)
+                directFile.writeBytes(bytes)
                 resolvedPath = directFile.absolutePath
                 isPublic = true
 
-                // Broadcast to Android Media Scanner so all file browser apps immediately index it
                 MediaScannerConnection.scanFile(
                     context,
                     arrayOf(directFile.absolutePath),
@@ -129,13 +159,12 @@ object LandRecordStorageManager {
             }
         }
 
-        // 3. Fallback to external files if public access failed
         if (resolvedPath.isEmpty()) {
             try {
                 val appDownloads = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), subDir)
                 if (!appDownloads.exists()) appDownloads.mkdirs()
                 val fallbackFile = File(appDownloads, fileName)
-                fallbackFile.writeText(content, Charsets.UTF_8)
+                fallbackFile.writeBytes(bytes)
                 resolvedPath = fallbackFile.absolutePath
                 isPublic = false
             } catch (e: Exception) {
@@ -146,51 +175,90 @@ object LandRecordStorageManager {
         return SavedFileResult(
             primaryDisplayPath = if (resolvedPath.isNotEmpty()) resolvedPath else "$relativePath$fileName",
             mediaStoreUri = resolvedUri,
-            isPublicDownloads = isPublic
+            isPublicDownloads = isPublic,
+            sha256Checksum = sha256,
+            fileSizeBytes = bytes.size.toLong()
         )
     }
 
     /**
-     * Specifically exports an image to the public Gallery using MediaStore.
+     * Writes UTF-8 text content to Download/LandRecords/... and computes its SHA-256 checksum.
      */
-    fun saveImageToGallery(
+    fun saveFileToLandRecords(
         context: Context,
         fileName: String,
         content: String,
-        mimeType: String = "image/jpeg"
-    ): Uri? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/LandRecords")
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }
-            val resolver = context.contentResolver
-            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-            if (uri != null) {
-                resolver.openOutputStream(uri)?.use { stream ->
-                    stream.write(content.toByteArray(Charsets.UTF_8))
-                }
-                contentValues.clear()
-                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                resolver.update(uri, contentValues, null, null)
-                return uri
-            }
-        } else {
-            val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-            val folder = File(picturesDir, "LandRecords")
-            if (!folder.exists()) folder.mkdirs()
-            val file = File(folder, fileName)
-            file.writeText(content, Charsets.UTF_8)
-            MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), arrayOf(mimeType), null)
-            return Uri.fromFile(file)
-        }
-        return null
+        mimeType: String,
+        subDir: String = LAND_RECORDS_SUBDIR
+    ): SavedFileResult {
+        val bytes = content.toByteArray(Charsets.UTF_8)
+        return saveBytesToLandRecords(context, fileName, bytes, mimeType, subDir)
     }
 
     /**
-     * Saves an individual Mouza survey record directly to Download/LandRecords/
+     * Validates and imports a genuine user-supplied PDF document into the structured Mouza archive folder:
+     * LRgetBD/<Division>/<District>/<Upazila>/<Mouza_JL>/<SurveyType>/Imported/
+     *
+     * Never modifies the original PDF bytes. Rejects invalid/corrupted PDFs.
+     */
+    fun importAndVerifyUserPdf(
+        context: Context,
+        pdfBytes: ByteArray,
+        originalFileName: String,
+        divisionNameEn: String,
+        districtNameEn: String,
+        upazilaNameEn: String,
+        mouzaNameEn: String,
+        jlNo: String,
+        surveyType: String
+    ): SavedFileResult {
+        val validation = DocumentVerificationEngine.verifyDocumentBytes(
+            bytes = pdfBytes,
+            declaredMimeType = "application/pdf",
+            fileName = originalFileName
+        )
+
+        if (!validation.isValid) {
+            return SavedFileResult(
+                primaryDisplayPath = "",
+                mediaStoreUri = null,
+                isPublicDownloads = false,
+                sha256Checksum = validation.sha256Checksum,
+                fileSizeBytes = validation.fileSizeBytes,
+                validationResult = validation
+            )
+        }
+
+        val subDir = buildArchiveSubPath(
+            divisionNameEn = divisionNameEn,
+            districtNameEn = districtNameEn,
+            upazilaNameEn = upazilaNameEn,
+            mouzaNameEn = mouzaNameEn,
+            jlNo = jlNo,
+            surveyType = surveyType,
+            subFolder = "Imported"
+        )
+        val cleanName = if (originalFileName.endsWith(".pdf", ignoreCase = true)) {
+            originalFileName
+        } else {
+            "$originalFileName.pdf"
+        }
+
+        val saved = saveBytesToLandRecords(
+            context = context,
+            fileName = cleanName,
+            bytes = pdfBytes,
+            mimeType = "application/pdf",
+            subDir = subDir
+        )
+        return saved.copy(validationResult = validation)
+    }
+
+    /**
+     * Saves a Mouza Geographic & Provenance Metadata Manifest and a valid PDF 1.4 Archive Index Sheet
+     * under Download/LandRecords/LRgetBD/<Division>/<District>/<Upazila>/<Mouza_JL>/<Survey>/Metadata/
+     *
+     * Never claims to be a certified government Khatian copy.
      */
     fun saveMouzaRecordFile(
         context: Context,
@@ -198,16 +266,45 @@ object LandRecordStorageManager {
         district: District,
         upazila: Upazila
     ): SavedFileResult {
-        val safeMouzaName = task.mouzaNameEn.replace("[^a-zA-Z0-9]".toRegex(), "_")
-        val safeUpazilaName = upazila.nameEn.replace("[^a-zA-Z0-9]".toRegex(), "_")
-        val safeRecordType = task.recordTypeLabel.replace("[^a-zA-Z0-9]".toRegex(), "_")
-        val subDir = "$LAND_RECORDS_SUBDIR/$safeUpazilaName"
-        val refSuffix = if (task.referenceId != null) "_Ref_${task.referenceId.replace("[^a-zA-Z0-9]".toRegex(), "_")}" else ""
-        val jsonFileName = "${safeUpazilaName}_${safeMouzaName}${refSuffix}_JL${task.jlNo}_${safeRecordType}.json"
+        val safeMouzaName = sanitizeSegment(task.mouzaNameEn)
+        val safeUpazilaName = sanitizeSegment(upazila.nameEn)
+        val safeRecordType = sanitizeSegment(task.recordTypeLabel)
+        val subDir = buildArchiveSubPath(
+            divisionNameEn = task.divisionId.replaceFirstChar { it.uppercase() },
+            districtNameEn = district.nameEn,
+            upazilaNameEn = upazila.nameEn,
+            mouzaNameEn = task.mouzaNameEn,
+            jlNo = task.jlNo,
+            surveyType = task.surveyType,
+            subFolder = "Metadata"
+        )
+        val refSuffix = if (task.referenceId != null) "_Ref_${sanitizeSegment(task.referenceId)}" else ""
 
+        // 1. Generate valid binary PDF 1.4 Local Archive Index Sheet (with explicit non-certified disclosure)
+        val pdfFileName = "${safeUpazilaName}_${safeMouzaName}${refSuffix}_JL${task.jlNo}_Archive_Index.pdf"
+        val pdfBytes = DocumentVerificationEngine.generateValidPdfReportBytes(
+            title = "LRgetBD Local Archive Index - ${district.nameEn} / ${upazila.nameEn} / ${task.mouzaNameEn}",
+            lines = listOf(
+                "Division: ${task.divisionId.uppercase()} | District: ${district.nameEn} | Upazila: ${upazila.nameEn}",
+                "Mouza: ${task.mouzaNameEn} (JL No: ${task.jlNo}) | Mouza ID: ${task.mouzaId}",
+                "Survey Categories: ${task.recordTypeLabel}",
+                "Retrieval Mode: ${task.retrievalMode.labelEn}",
+                "Source Provenance: ${task.sourceName} (${task.sourceReference})",
+                "Reference ID: ${task.referenceId ?: "Mouza-Level Registry"}",
+                "Timestamp: ${task.timestamp}",
+                "Notice: This is a local geographical index sheet generated by LRgetBD.",
+                "To attach an official Khatian PDF, use the User-Assisted Browser or PDF Import tool."
+            )
+        )
+        val pdfSaved = saveBytesToLandRecords(context, pdfFileName, pdfBytes, "application/pdf", subDir)
+
+        // 2. Save JSON provenance metadata with the real SHA-256 of the index PDF
+        val jsonFileName = "${safeUpazilaName}_${safeMouzaName}${refSuffix}_JL${task.jlNo}_${safeRecordType}.json"
         val jsonContent = """
 {
-  "system": "Bangladesh Digital Land Records & Survey (DLR&S)",
+  "application": "LRgetBD - Bangladesh Land-Record Search & Archive",
+  "disclaimer": "Unofficial local archive metadata. Not a certified government document.",
+  "division": "${task.divisionNameBn} (${task.divisionId})",
   "district": "${district.nameBn} (${district.nameEn})",
   "upazila": "${upazila.nameBn} (${upazila.nameEn})",
   "mouza": {
@@ -217,151 +314,207 @@ object LandRecordStorageManager {
     "mouzaId": "${task.mouzaId}"
   },
   "referenceId": "${task.referenceId ?: "N/A"}",
-  "recordType": "${task.recordTypeLabel}",
-  "downloadFormat": "${task.downloadFormat.name}",
-  "totalKhatians": ${task.totalKhatians},
-  "fileSizeBytes": ${task.fileSizeBytes},
-  "downloadTimestamp": ${task.timestamp},
-  "status": "VERIFIED_OFFLINE_SAVED",
-  "storageFolder": "Download/LandRecords/"
+  "surveyType": "${task.surveyType}",
+  "recordCategories": "${task.recordTypeLabel}",
+  "retrievalMode": "${task.retrievalMode.name}",
+  "sourceName": "${task.sourceName}",
+  "sourceReference": "${task.sourceReference}",
+  "archiveIndexPdfPath": "${pdfSaved.primaryDisplayPath}",
+  "sha256Checksum": "${pdfSaved.sha256Checksum}",
+  "fileSizeBytes": ${pdfSaved.fileSizeBytes},
+  "createdTimestamp": ${task.timestamp},
+  "storageFolder": "Download/$subDir/"
 }
 """.trimIndent()
 
-        // Save simulated record file based on format (PDF or IMAGE)
-        val formatExt = if (task.downloadFormat == com.example.data.model.DownloadFormat.PDF) ".pdf" else ".jpg"
-        val formatMime = if (task.downloadFormat == com.example.data.model.DownloadFormat.PDF) "application/pdf" else "image/jpeg"
-        val recordFileName = "${upazila.nameEn}_${safeMouzaName}${refSuffix}_Official_Record$formatExt"
-        val simulatedContent = "--- SIMULATED ${task.downloadFormat.name} LAND RECORD ---\n" +
-                "This is a simulated ${task.downloadFormat.label} file for ${task.mouzaNameEn} Mouza.\n" +
-                "Source: Bangladesh Digital Land Records Portal.\n" +
-                "Record Type: ${task.recordTypeLabel}\n" +
-                "Khatian Count: ${task.totalKhatians}\n"
-        
-        if (task.downloadFormat == com.example.data.model.DownloadFormat.IMAGE) {
-            saveImageToGallery(context, recordFileName, simulatedContent, formatMime)
-        } else {
-            saveFileToLandRecords(context, recordFileName, simulatedContent, formatMime, subDir)
-        }
-
-        // Also save readable text ledger for the mouza
+        // 3. Save human-readable Bengali/English text summary
         val textFileName = "${safeUpazilaName}_${safeMouzaName}_JL${task.jlNo}_${safeRecordType}.txt"
         val textContent = """
 ====================================================
-  গণপ্রজাতন্ত্রী বাংলাদেশ সরকার - ভূমি রেকর্ড ও জরিপ
-  মৌজা খতিয়ান ফাইল (Land Record Mouza Document)
+  LRgetBD - বাংলাদেশ ভূমি রেকর্ড ও মৌজা আর্কাইভ ইনডেক্স
+  (Unofficial Local Archive Index — Not Certified Copy)
 ====================================================
+বিভাগ: ${task.divisionNameBn}
 জেলা: ${district.nameBn} (${district.nameEn})
 উপজেলা: ${upazila.nameBn} (${upazila.nameEn})
 মৌজা: ${task.mouzaNameBn} (${task.mouzaNameEn})
 জে.এল নং: ${task.jlNo}
-জরিপ রেকর্ড ধরন: ${task.recordTypeLabel}
-ডাউনলোড ফরম্যাট: ${task.downloadFormat.label}
-মোট খতিয়ান সংখ্যা: ${task.totalKhatians} টি
-সংরক্ষণ সময়: ${task.timestamp}
-অবস্থান: ফোন মেমোরি / Download / LandRecords / $safeUpazilaName /
+জরিপ ও রেকর্ড ধরন: ${task.recordTypeLabel}
+সংগ্রহ পদ্ধতি: ${task.retrievalMode.labelBn}
+তথ্যসূত্র: ${task.sourceName} (${task.sourceReference})
+SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
+ফাইল আকার: ${pdfSaved.fileSizeBytes} Bytes
+অবস্থান: ফোন মেমোরি / Download / $subDir /
 ====================================================
 """.trimIndent()
 
         saveFileToLandRecords(context, textFileName, textContent, "text/plain", subDir)
-        return saveFileToLandRecords(context, jsonFileName, jsonContent, "application/json", subDir)
+        val jsonSaved = saveFileToLandRecords(context, jsonFileName, jsonContent, "application/json", subDir)
+        return jsonSaved.copy(
+            sha256Checksum = pdfSaved.sha256Checksum,
+            fileSizeBytes = pdfSaved.fileSizeBytes
+        )
     }
 
     /**
-     * Compiles and writes the complete Master Land Records Archive
-     * (JSON, TXT, and CSV) to Download/LandRecords/
+     * Compiles and exports the Master Land Records Archive & Ledger in all 5 formats required by Section 9:
+     * 1. JSON
+     * 2. TXT
+     * 3. CSV
+     * 4. XLSX (SpreadsheetML / Excel compatible)
+     * 5. PDF (Valid binary PDF 1.4 report)
      */
     fun saveMasterLandRecordsArchive(
         context: Context,
         archive: MasterArchive,
         district: District,
         upazila: Upazila,
-        queueTasks: List<DownloadTask>
+        queueTasks: List<DownloadTask>,
+        ledgerEntries: List<MasterLedgerEntryEntity> = emptyList()
     ): MasterArchiveSaveResult {
-        val baseName = "${district.nameEn}_${upazila.nameEn}_Master_Land_Records_2026"
+        val safeUpazilaName = sanitizeSegment(upazila.nameEn)
+        val baseName = "${sanitizeSegment(district.nameEn)}_${safeUpazilaName}_Master_Land_Ledger"
+        val subDir = "$LAND_RECORDS_SUBDIR/$LRGETBD_ROOT_SUBDIR/${sanitizeSegment(district.divisionId)}/${sanitizeSegment(district.nameEn)}/$safeUpazilaName/Master_Ledger"
 
-        // 1. Generate Master JSON
+        // 1. Master JSON Export
         val jsonBuilder = StringBuilder()
         jsonBuilder.append("{\n")
-        jsonBuilder.append("  \"portal\": \"Bangladesh Digital Land Records (DLR&S)\",\n")
+        jsonBuilder.append("  \"application\": \"LRgetBD Master Land Ledger\",\n")
+        jsonBuilder.append("  \"disclaimer\": \"Local archive export. Unofficial copies are not certified government documents.\",\n")
         jsonBuilder.append("  \"district\": \"${district.nameBn} (${district.nameEn})\",\n")
         jsonBuilder.append("  \"upazila\": \"${upazila.nameBn} (${upazila.nameEn})\",\n")
         jsonBuilder.append("  \"recordTypes\": \"${archive.recordTypesIncluded}\",\n")
-        jsonBuilder.append("  \"totalMouzasFound\": ${archive.totalMouzasCount},\n")
-        jsonBuilder.append("  \"totalKhatians\": ${archive.totalKhatiansCount},\n")
-        jsonBuilder.append("  \"archivedSize\": \"${archive.totalSizeMb}\",\n")
-        jsonBuilder.append("  \"generatedDate\": \"${System.currentTimeMillis()}\",\n")
-        jsonBuilder.append("  \"storageLocation\": \"Download/LandRecords/\",\n")
+        jsonBuilder.append("  \"totalMouzasCount\": ${archive.totalMouzasCount},\n")
+        jsonBuilder.append("  \"generatedTimestamp\": ${System.currentTimeMillis()},\n")
         jsonBuilder.append("  \"mouzaRecords\": [\n")
-
         queueTasks.forEachIndexed { i, task ->
             jsonBuilder.append("    {\n")
+            jsonBuilder.append("      \"division\": \"${task.divisionNameBn}\",\n")
+            jsonBuilder.append("      \"district\": \"${district.nameEn}\",\n")
+            jsonBuilder.append("      \"upazila\": \"${upazila.nameEn}\",\n")
             jsonBuilder.append("      \"mouzaId\": \"${task.mouzaId}\",\n")
             jsonBuilder.append("      \"nameBn\": \"${task.mouzaNameBn}\",\n")
             jsonBuilder.append("      \"nameEn\": \"${task.mouzaNameEn}\",\n")
             jsonBuilder.append("      \"jlNo\": \"${task.jlNo}\",\n")
-            jsonBuilder.append("      \"recordType\": \"${task.recordTypeLabel}\",\n")
-            jsonBuilder.append("      \"khatians\": ${task.totalKhatians},\n")
-            jsonBuilder.append("      \"status\": \"VERIFIED_DOWNLOADED\"\n")
+            jsonBuilder.append("      \"surveyType\": \"${task.recordTypeLabel}\",\n")
+            jsonBuilder.append("      \"source\": \"${task.sourceName}\",\n")
+            jsonBuilder.append("      \"sha256\": \"${task.sha256Checksum}\",\n")
+            jsonBuilder.append("      \"status\": \"${task.status.name}\"\n")
             jsonBuilder.append("    }${if (i < queueTasks.size - 1) "," else ""}\n")
         }
         jsonBuilder.append("  ]\n")
         jsonBuilder.append("}\n")
-        val safeUpazilaName = upazila.nameEn.replace("[^a-zA-Z0-9]".toRegex(), "_")
-        val subDir = "$LAND_RECORDS_SUBDIR/$safeUpazilaName"
-
         val jsonContent = jsonBuilder.toString()
-        val jsonFileName = "$baseName.json"
-        val jsonResult = saveFileToLandRecords(context, jsonFileName, jsonContent, "application/json", subDir)
+        val jsonResult = saveFileToLandRecords(context, "$baseName.json", jsonContent, "application/json", subDir)
 
-        // 2. Generate Master Readable Text Ledger
+        // 2. Master TXT Export
         val textBuilder = StringBuilder()
         textBuilder.append("========================================================================\n")
-        textBuilder.append("       গণপ্রজাতন্ত্রী বাংলাদেশ সরকার - ভূমি রেকর্ড ও জরিপ অধিদপ্তর\n")
-        textBuilder.append("         মাস্টার ল্যান্ড রেকর্ডস লেজার (MASTER LAND RECORDS LEDGER)\n")
+        textBuilder.append("           LRgetBD — MASTER LAND LEDGER (মাস্টার ল্যান্ড লেজার)\n")
+        textBuilder.append("   [Unofficial Archive Ledger — Not a Certified Government Document]\n")
         textBuilder.append("========================================================================\n\n")
         textBuilder.append("জেলা: ${district.nameBn} (${district.nameEn})\n")
         textBuilder.append("উপজেলা: ${upazila.nameBn} (${upazila.nameEn})\n")
-        textBuilder.append("জরিপ রেকর্ড ধরন: ${archive.recordTypesIncluded}\n")
+        textBuilder.append("জরিপ ও রেকর্ড ধরন: ${archive.recordTypesIncluded}\n")
         textBuilder.append("মোট মৌজা সংখ্যা: ${archive.totalMouzasCount} টি\n")
-        textBuilder.append("মোট খতিয়ান সংখ্যা: ${archive.totalKhatiansCount} টি\n")
-        textBuilder.append("আর্কাইভ ফাইল আকার: ${archive.totalSizeMb}\n")
-        textBuilder.append("সংরক্ষণ ফোল্ডার: ফোন মেমোরি / Download / LandRecords / $safeUpazilaName /\n\n")
+        textBuilder.append("সংরক্ষণ ফোল্ডার: Download/$subDir/\n\n")
         textBuilder.append("------------------------------------------------------------------------\n")
-        textBuilder.append("নং  | মৌজার নাম (বাংলা/ইংরেজি)        | জে.এল নং | রেকর্ড ধরন | খতিয়ান\n")
+        textBuilder.append("নং  | মৌজার নাম (বাংলা/ইংরেজি)        | জে.এল নং | জরিপ ধরন | স্ট্যাটাস\n")
         textBuilder.append("------------------------------------------------------------------------\n")
         queueTasks.forEachIndexed { idx, task ->
             val num = String.format("%2d", idx + 1)
             val name = "${task.mouzaNameBn} (${task.mouzaNameEn})".padEnd(28)
             val jl = task.jlNo.padEnd(8)
             val rec = task.recordTypeLabel.padEnd(10)
-            textBuilder.append("$num. | $name | $jl | $rec | ${task.totalKhatians} টি\n")
+            textBuilder.append("$num. | $name | $jl | $rec | ${task.status.name}\n")
         }
         textBuilder.append("========================================================================\n")
-        textBuilder.append("সকল মৌজার খতিয়ান ডাটা সফলভাবে ডাউনলোড ও সংরক্ষণ করা হয়েছে।\n")
         val textContent = textBuilder.toString()
-        val textFileName = "$baseName.txt"
-        val textResult = saveFileToLandRecords(context, textFileName, textContent, "text/plain")
+        val textResult = saveFileToLandRecords(context, "$baseName.txt", textContent, "text/plain", subDir)
 
-        // 3. Generate Master CSV (Spreadsheet)
+        // 3. Master CSV Export
         val csvBuilder = StringBuilder()
-        csvBuilder.append("SL,District,Upazila,Mouza_Bn,Mouza_En,JL_No,Record_Type,Total_Khatians,Status\n")
-        queueTasks.forEachIndexed { idx, task ->
-            csvBuilder.append("${idx + 1},\"${district.nameEn}\",\"${upazila.nameEn}\",\"${task.mouzaNameBn}\",\"${task.mouzaNameEn}\",\"${task.jlNo}\",\"${task.recordTypeLabel}\",${task.totalKhatians},\"COMPLETED\"\n")
+        csvBuilder.append("SL,Division,District,Upazila,Mouza_Bn,Mouza_En,JL_No,Survey_Type,Khatian_No,Dag_No,Owner_Name,Guardian_Name,Source,Verification_Status,SHA256_Checksum,File_Reference\n")
+        if (ledgerEntries.isNotEmpty()) {
+            ledgerEntries.forEachIndexed { idx, entry ->
+                csvBuilder.append(
+                    "${idx + 1},\"${entry.divisionName}\",\"${entry.districtName}\",\"${entry.upazilaName}\"," +
+                        "\"${entry.mouzaName}\",\"${entry.mouzaName}\",\"${entry.jlNumber}\",\"${entry.surveyType}\"," +
+                        "\"${entry.khatianNumber}\",\"${entry.dagNumber}\",\"${entry.ownerName}\",\"${entry.guardianName}\"," +
+                        "\"${entry.sourceName}\",\"${entry.verificationStatus.name}\",\"${entry.sha256Checksum}\",\"${entry.fileReference}\"\n"
+                )
+            }
+        } else {
+            queueTasks.forEachIndexed { idx, task ->
+                csvBuilder.append(
+                    "${idx + 1},\"${task.divisionNameBn}\",\"${district.nameEn}\",\"${upazila.nameEn}\"," +
+                        "\"${task.mouzaNameBn}\",\"${task.mouzaNameEn}\",\"${task.jlNo}\",\"${task.recordTypeLabel}\"," +
+                        "\"${task.referenceId ?: ""}\",\"\",\"\",\"\"," +
+                        "\"${task.sourceName}\",\"${task.status.name}\",\"${task.sha256Checksum}\",\"${task.fileLocation}\"\n"
+                )
+            }
         }
         val csvContent = csvBuilder.toString()
-        val csvFileName = "$baseName.csv"
-        val csvResult = saveFileToLandRecords(context, csvFileName, csvContent, "text/csv", subDir)
+        val csvResult = saveFileToLandRecords(context, "$baseName.csv", csvContent, "text/csv", subDir)
+
+        // 4. Master XLSX (Excel SpreadsheetML) Export
+        val xlsxBuilder = StringBuilder()
+        xlsxBuilder.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        xlsxBuilder.append("<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\">\n")
+        xlsxBuilder.append("  <Worksheet ss:Name=\"MasterLandLedger\">\n    <Table>\n")
+        xlsxBuilder.append("      <Row><Cell><Data ss:Type=\"String\">Division</Data></Cell><Cell><Data ss:Type=\"String\">District</Data></Cell><Cell><Data ss:Type=\"String\">Upazila</Data></Cell><Cell><Data ss:Type=\"String\">Mouza</Data></Cell><Cell><Data ss:Type=\"String\">JL_No</Data></Cell><Cell><Data ss:Type=\"String\">Survey_Type</Data></Cell><Cell><Data ss:Type=\"String\">Status</Data></Cell><Cell><Data ss:Type=\"String\">SHA256</Data></Cell></Row>\n")
+        queueTasks.forEach { task ->
+            xlsxBuilder.append(
+                "      <Row>" +
+                    "<Cell><Data ss:Type=\"String\">${task.divisionNameBn}</Data></Cell>" +
+                    "<Cell><Data ss:Type=\"String\">${district.nameEn}</Data></Cell>" +
+                    "<Cell><Data ss:Type=\"String\">${upazila.nameEn}</Data></Cell>" +
+                    "<Cell><Data ss:Type=\"String\">${task.mouzaNameEn}</Data></Cell>" +
+                    "<Cell><Data ss:Type=\"String\">${task.jlNo}</Data></Cell>" +
+                    "<Cell><Data ss:Type=\"String\">${task.recordTypeLabel}</Data></Cell>" +
+                    "<Cell><Data ss:Type=\"String\">${task.status.name}</Data></Cell>" +
+                    "<Cell><Data ss:Type=\"String\">${task.sha256Checksum}</Data></Cell>" +
+                    "</Row>\n"
+            )
+        }
+        xlsxBuilder.append("    </Table>\n  </Worksheet>\n</Workbook>\n")
+        val xlsxResult = saveFileToLandRecords(
+            context,
+            "$baseName.xlsx",
+            xlsxBuilder.toString(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            subDir
+        )
+
+        // 5. Master PDF (Standards-compliant PDF 1.4 binary) Export
+        val pdfLines = mutableListOf(
+            "District: ${district.nameEn} | Upazila: ${upazila.nameEn} | Total Mouzas: ${archive.totalMouzasCount}",
+            "Surveys: ${archive.recordTypesIncluded}"
+        )
+        queueTasks.take(35).forEachIndexed { idx, task ->
+            pdfLines.add("${idx + 1}. ${task.mouzaNameEn} (JL: ${task.jlNo}) - ${task.recordTypeLabel} [${task.status.name}]")
+        }
+        val pdfBytes = DocumentVerificationEngine.generateValidPdfReportBytes(
+            title = "LRgetBD Master Land Ledger - ${district.nameEn} / ${upazila.nameEn}",
+            lines = pdfLines
+        )
+        val pdfResult = saveBytesToLandRecords(context, "$baseName.pdf", pdfBytes, "application/pdf", subDir)
 
         val filesList = listOf(
             jsonResult.primaryDisplayPath,
             textResult.primaryDisplayPath,
-            csvResult.primaryDisplayPath
+            csvResult.primaryDisplayPath,
+            xlsxResult.primaryDisplayPath,
+            pdfResult.primaryDisplayPath
         )
 
         return MasterArchiveSaveResult(
             jsonPath = jsonResult.primaryDisplayPath,
             textPath = textResult.primaryDisplayPath,
             csvPath = csvResult.primaryDisplayPath,
+            xlsxPath = xlsxResult.primaryDisplayPath,
+            pdfPath = pdfResult.primaryDisplayPath,
+            sha256Checksum = pdfResult.sha256Checksum,
             allFiles = filesList,
             filePreview = textContent,
             isPublicDownloads = jsonResult.isPublicDownloads,
@@ -375,7 +528,6 @@ object LandRecordStorageManager {
     fun openDownloadsFolder(context: Context) {
         var opened = false
 
-        // 1. Try launching the standard Android Downloads UI
         try {
             val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -384,7 +536,6 @@ object LandRecordStorageManager {
             opened = true
         } catch (ignored: Exception) {}
 
-        // 2. Try launching file manager with Downloads directory URI
         if (!opened) {
             try {
                 val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -400,7 +551,6 @@ object LandRecordStorageManager {
             } catch (ignored: Exception) {}
         }
 
-        // 3. Fallback to general storage document picker/viewer
         if (!opened) {
             try {
                 val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -415,7 +565,7 @@ object LandRecordStorageManager {
         if (!opened) {
             Toast.makeText(
                 context,
-                "Saved to: Download/LandRecords/\nOpen your 'Files' app to view.",
+                "Saved to: Download/LandRecords/LRgetBD/\nOpen your 'Files' app to view.",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -438,7 +588,7 @@ object LandRecordStorageManager {
     }
 
     /**
-     * Cleans temporary cache without touching the downloaded records in Download/LandRecords
+     * Cleans temporary cache without touching downloaded records in Download/LandRecords
      */
     fun clearCacheAndMemory(context: Context) {
         try {

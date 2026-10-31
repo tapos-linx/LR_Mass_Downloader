@@ -1,4 +1,4 @@
-name: Build & Release Android APK (Auto Versioning)
+name: Build, Test, Sign & Release LRgetBD APK
 
 on:
   push:
@@ -13,8 +13,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build & Auto-Release APK
+  build-and-release:
+    name: Build, Test, Lint & Release Signed LRgetBD.apk
     runs-on: ubuntu-latest
 
     steps:
@@ -33,16 +33,13 @@ jobs:
             VER_CODE="${RUN_NUM}"
             VER_TAG="${RAW_TAG}"
           else
-            VER_NAME="1.0.${RUN_NUM}"
-            VER_CODE="${RUN_NUM}"
-            VER_TAG="v1.0.${RUN_NUM}"
+            VER_NAME="1.1.${RUN_NUM}"
+            VER_CODE="$((100 + RUN_NUM))"
+            VER_TAG="v1.1.${RUN_NUM}"
           fi
           echo "VERSION_NAME=${VER_NAME}" >> $GITHUB_ENV
           echo "VERSION_CODE=${VER_CODE}" >> $GITHUB_ENV
           echo "VERSION_TAG=${VER_TAG}" >> $GITHUB_ENV
-          echo "tag=${VER_TAG}" >> $GITHUB_OUTPUT
-          echo "version=${VER_NAME}" >> $GITHUB_OUTPUT
-          echo "build=${VER_CODE}" >> $GITHUB_OUTPUT
           echo "Generated Version: ${VER_NAME} (Build ${VER_CODE}, Tag ${VER_TAG})"
 
       - name: Set up JDK 17
@@ -55,72 +52,104 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Create debug.keystore if missing
+      - name: Grant Execute Permission to Gradle Wrapper
+        run: chmod +x gradlew || true
+
+      - name: Prepare Release Signing Keystore (From GitHub Secrets or CI Fallback)
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ ! -f debug.keystore ]; then
             keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
+          if [ -n "$SIGNING_KEYSTORE_BASE64" ]; then
+            echo "$SIGNING_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+            echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> $GITHUB_ENV
+          else
+            keytool -genkey -v -keystore my-upload-key.jks -alias upload -storepass lrgetbd_release_store -keypass lrgetbd_release_key -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=LRgetBD Release,O=LRgetBD Open Source,C=BD"
+            echo "STORE_PASSWORD=lrgetbd_release_store" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=lrgetbd_release_key" >> $GITHUB_ENV
+          fi
 
-      - name: Grant Execute Permission to Gradle
-        run: chmod +x gradlew || true
+      - name: Run Unit & Robolectric QA Tests
+        run: |
+          ./gradlew :app:testDebugUnitTest --stacktrace || gradle :app:testDebugUnitTest --stacktrace
 
-      - name: Build Debug APK with Gradle (Version ${{ env.VERSION_NAME }})
+      - name: Run Android Lint Checks
+        run: |
+          ./gradlew :app:lintDebug --stacktrace || gradle :app:lintDebug --stacktrace
+
+      - name: Build Signed Production Release APK (LRgetBD.apk)
         env:
           VERSION_CODE: ${{ env.VERSION_CODE }}
           VERSION_NAME: ${{ env.VERSION_NAME }}
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ env.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
         run: |
-          ./gradlew assembleDebug --stacktrace || gradle assembleDebug --stacktrace
+          ./gradlew :app:assembleRelease --stacktrace || gradle :app:assembleRelease --stacktrace
 
-      - name: Prepare APK Release Assets
+      - name: Verify Signed Release APK Output & Generate SHA-256 Checksum
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/KhotiyanBD.apk
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/KhotiyanBD_Latest.apk
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/KhotiyanBD_${{ env.VERSION_TAG }}.apk
-          ls -lh release-output/
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$RELEASE_APK" ] || [ ! -s "$RELEASE_APK" ]; then
+            echo "ERROR: Signed release APK was not found or is empty!"
+            exit 1
+          fi
+          cp "$RELEASE_APK" release-output/LRgetBD.apk
+          cp "$RELEASE_APK" release-output/LRMassDownloader.apk
+          cd release-output
+          sha256sum LRgetBD.apk > LRgetBD.apk.sha256
+          cat LRgetBD.apk.sha256
+          ls -lh
 
-      - name: Upload APK Artifact to GitHub Actions
+      - name: Clean Ephemeral Signing Keystore
+        if: always()
+        run: rm -f my-upload-key.jks
+
+      - name: Upload Signed LRgetBD.apk Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KhotiyanBD-${{ env.VERSION_TAG }}-APK
-          path: release-output/KhotiyanBD.apk
+          name: LRgetBD-${{ env.VERSION_TAG }}-Release
+          path: |
+            release-output/LRgetBD.apk
+            release-output/LRgetBD.apk.sha256
           retention-days: 90
 
-      - name: Publish GitHub Release (One-Click Download & Latest)
+      - name: Publish GitHub Release (LRgetBD.apk + SHA-256)
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
           tag_name: ${{ env.VERSION_TAG }}
-          name: "Khotiyan BD ${{ env.VERSION_TAG }} (Build ${{ env.VERSION_CODE }})"
+          name: "LRgetBD ${{ env.VERSION_TAG }} (Build ${{ env.VERSION_CODE }})"
           make_latest: true
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ### 📜 Khotiyan BD - Automated Production Release ${{ env.VERSION_TAG }}
-            
-            #### 🚀 One-Click APK Direct Production Download Links:
-            - 👉 [**Download KhotiyanBD.apk (Recommended)**](https://github.com/${{ github.repository }}/releases/latest/download/KhotiyanBD.apk)
-            - 👉 [**Download KhotiyanBD_Latest.apk**](https://github.com/${{ github.repository }}/releases/latest/download/KhotiyanBD_Latest.apk)
-            - 📦 [Download Version Tagged APK (${{ env.VERSION_TAG }})](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION_TAG }}/KhotiyanBD_${{ env.VERSION_TAG }}.apk)
-            
+            ### 📜 LRgetBD — Production Release ${{ env.VERSION_TAG }}
+            **Complete Bangladesh Geographical Database, Automatic Mouza Selection & Intelligent Mass Land-Record Archive**
+
+            #### 🚀 Direct Production APK Download (100% Free & Public):
+            - 👉 [**Download LRgetBD.apk (Latest Signed Release)**](https://github.com/${{ github.repository }}/releases/latest/download/LRgetBD.apk)
+            - 🔐 [**Download LRgetBD.apk.sha256 Checksum**](https://github.com/${{ github.repository }}/releases/latest/download/LRgetBD.apk.sha256)
+
             ---
-            
-            #### 📊 Build & Version Information:
+
+            #### 📊 Build & Verification Metadata:
             - **Version Name:** `${{ env.VERSION_NAME }}`
-            - **Version Code (Build):** `${{ env.VERSION_CODE }}`
+            - **Version Code:** `${{ env.VERSION_CODE }}`
             - **Git Commit:** `${{ github.sha }}`
-            
-            #### ⚡ Installation Note:
-            When prompted by Android / Google Play Protect, tap **"Install anyway"** to bypass cloud deep-scanning for faster installation.
-            
-            #### ✨ Key Capabilities:
-            - **Complete Dataset**: Cumilla (17 Upazilas) & Brahmanbaria (9 Upazilas)
-            - **Automated Queue**: Anti-repeat algorithm prevents duplicate downloads
-            - **Master Archive**: Consolidated JSON, TXT, and CSV exports
+            - **Geographic Coverage:** All 8 Divisions, All 64 Districts, Verified Upazilas & Mouzas
+            - **Batch Engine:** 7 Mouzas per Batch (`Room` + `WorkManager` persistent queue)
+            - **Document Integrity:** ISO 32000-1 PDF structure validation & cryptographic `SHA-256` checksums
           files: |
-            release-output/KhotiyanBD.apk
-            release-output/KhotiyanBD_Latest.apk
-            release-output/KhotiyanBD_${{ env.VERSION_TAG }}.apk
+            release-output/LRgetBD.apk
+            release-output/LRgetBD.apk.sha256
+            release-output/LRMassDownloader.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

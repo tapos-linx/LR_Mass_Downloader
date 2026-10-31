@@ -42,14 +42,50 @@ class DownloadQueueWorker(
         val database = AppDatabase.getDatabase(applicationContext)
         val queueDao = database.downloadQueueDao()
         val savedRecordDao = database.savedRecordDao()
+        val advisorProfile = com.example.util.NetworkDeviceQueueAdvisor.analyze(applicationContext)
 
         try {
-            setForeground(createForegroundInfo("🛡️ Anti-Freeze Downloader Active", "Initializing queue...", 0, 100, true))
+            setForeground(
+                createForegroundInfo(
+                    "🛡️ Multi-Queue Downloader Active",
+                    "Network: ${advisorProfile.networkTier.labelEn} • ${advisorProfile.mouzasPerQueue} Mouzas/Queue",
+                    0,
+                    100,
+                    true
+                )
+            )
         } catch (ignored: Exception) {}
 
         val isAutoBatchMode = inputData.getBoolean(DownloadWorkManagerHelper.KEY_AUTO_BATCH_MODE, true)
 
         while (!isStopped) {
+            val allTasksNow = queueDao.getAllTasksDirect()
+            // If the foreground ViewModel coordinator is actively driving DOWNLOADING tasks, yield briefly
+            val activelyDownloading = allTasksNow.filter { it.status == TaskStatus.DOWNLOADING }
+            if (activelyDownloading.isNotEmpty()) {
+                val activeTask = activelyDownloading.first()
+                try {
+                    setProgress(
+                        androidx.work.workDataOf(
+                            DownloadWorkManagerHelper.KEY_PROGRESS_PERCENT to activeTask.progress,
+                            DownloadWorkManagerHelper.KEY_ITEM_PROGRESS to activeTask.progress,
+                            DownloadWorkManagerHelper.KEY_ACTIVE_TASK_NAME to activeTask.mouzaNameBn,
+                            DownloadWorkManagerHelper.KEY_SPEED_KBPS to activeTask.speedKbps
+                        )
+                    )
+                    setForeground(
+                        createForegroundInfo(
+                            "📥 Queue #${activeTask.batchNumber}: ${activeTask.mouzaNameBn}",
+                            "${activeTask.downloadedKhatians}/${activeTask.totalKhatians} Khatians • ${activeTask.speedKbps} KB/s",
+                            activeTask.progress,
+                            100
+                        )
+                    )
+                } catch (ignored: Exception) {}
+                delay(500)
+                continue
+            }
+
             val task = queueDao.getNextPendingTask()
             if (task == null) {
                 if (isAutoBatchMode && !isStopped) {
@@ -64,44 +100,54 @@ class DownloadQueueWorker(
                         }
 
                         if (district != null && upazila != null) {
-                            val completedMouzaIds = allTasks.filter { it.status == TaskStatus.COMPLETED }.map { it.mouzaId }.toSet()
-                            val remainingMouzas = upazila.mouzas.filter { it.id !in completedMouzaIds }
+                            val existingMouzaIds = allTasks.map { it.mouzaId }.toSet()
+                            val remainingMouzas = upazila.mouzas.filter { it.id !in existingMouzaIds }
 
                             if (remainingMouzas.isNotEmpty()) {
-                                val nextBatch = remainingMouzas.take(7)
-                                val nextBatchNum = (allTasks.maxOfOrNull { it.batchNumber } ?: 1) + 1
+                                val queueSize = advisorProfile.mouzasPerQueue
+                                val startBatchNum = (allTasks.maxOfOrNull { it.batchNumber } ?: 0) + 1
                                 val timestamp = System.currentTimeMillis()
-                                val recordTypes = sampleTask.recordTypes
+                                val recordTypes = sampleTask.recordTypes.ifEmpty { com.example.data.model.RecordType.values().toSet() }
 
-                                val newTasks = nextBatch.mapIndexed { index, mouza ->
-                                    val taskId = "${mouza.id}-${nextBatchNum}-$timestamp-$index"
-                                    val totalKhatians = (30 + Random.nextInt(50)) * recordTypes.size
-                                    val fileSizeBytes = totalKhatians * 110000L
+                                val newTasks = mutableListOf<DownloadTask>()
+                                remainingMouzas.chunked(queueSize).forEachIndexed { chunkIdx, chunk ->
+                                    val batchNum = startBatchNum + chunkIdx
+                                    chunk.forEachIndexed { itemIdx, mouza ->
+                                        val taskId = "${mouza.id}-q${batchNum}-$timestamp-$itemIdx"
+                                        val totalKhatians = mouza.totalKhatiansFor(recordTypes)
+                                        val fileSizeBytes = totalKhatians * 110000L
 
-                                    DownloadTask(
-                                        id = taskId,
-                                        mouzaId = mouza.id,
-                                        mouzaNameBn = mouza.nameBn,
-                                        mouzaNameEn = mouza.nameEn,
-                                        jlNo = mouza.jlNo,
-                                        upazilaNameBn = upazila.nameBn,
-                                        districtNameBn = district.nameBn,
-                                        recordTypes = recordTypes,
-                                        status = TaskStatus.PENDING,
-                                        progress = 0,
-                                        totalKhatians = totalKhatians,
-                                        downloadedKhatians = 0,
-                                        speedKbps = 0,
-                                        fileSizeBytes = fileSizeBytes,
-                                        batchNumber = nextBatchNum,
-                                        timestamp = timestamp
-                                    )
+                                        newTasks.add(
+                                            DownloadTask(
+                                                id = taskId,
+                                                mouzaId = mouza.id,
+                                                mouzaNameBn = mouza.nameBn,
+                                                mouzaNameEn = mouza.nameEn,
+                                                jlNo = mouza.jlNo,
+                                                upazilaNameBn = upazila.nameBn,
+                                                districtNameBn = district.nameBn,
+                                                recordTypes = recordTypes,
+                                                downloadFormat = sampleTask.downloadFormat,
+                                                status = TaskStatus.PENDING,
+                                                progress = 0,
+                                                totalKhatians = totalKhatians,
+                                                downloadedKhatians = 0,
+                                                speedKbps = 0,
+                                                fileSizeBytes = fileSizeBytes,
+                                                batchNumber = batchNum,
+                                                timestamp = timestamp + (chunkIdx * 1000L) + itemIdx
+                                            )
+                                        )
+                                    }
                                 }
                                 queueDao.insertTasks(newTasks)
-                                continue 
-                            } else {
+                                continue
+                            } else if (allTasks.all { it.status == TaskStatus.COMPLETED }) {
                                 compileAndSaveMasterArchive(district, upazila, allTasks)
-                                showCompletionNotification("✅ ${upazila.nameBn} - সম্পূর্ণ ডাউনলোড সম্পন্ন", "মোট ${allTasks.size}টি মৌজার রেকর্ড সংরক্ষিত হয়েছে।")
+                                showCompletionNotification(
+                                    "✅ ${upazila.nameBn} - সকল কিউ ডাউনলোড সম্পন্ন",
+                                    "মোট ${allTasks.size}টি মৌজার সকল খতিয়ান রেকর্ড সংরক্ষিত হয়েছে।"
+                                )
                                 return@withContext Result.success()
                             }
                         }
@@ -110,7 +156,7 @@ class DownloadQueueWorker(
                 break
             }
 
-            queueDao.updateTask(task.copy(status = TaskStatus.DOWNLOADING, progress = 5, speedKbps = 320))
+            queueDao.updateTask(task.copy(status = TaskStatus.DOWNLOADING, progress = 5, speedKbps = 340))
 
             val totalSteps = 10
             val totalKhatians = task.totalKhatians
@@ -119,42 +165,60 @@ class DownloadQueueWorker(
                 var retryCount = 0
                 val maxRetries = 3
                 var success = false
-                
+
                 while (retryCount <= maxRetries && !success) {
                     if (isStopped) {
                         queueDao.updateTask(task.copy(status = TaskStatus.PENDING, progress = 0))
                         return@withContext Result.retry()
                     }
                     try {
-                        if (Random.nextInt(100) < 5 && retryCount < maxRetries) { // 5% failure chance
-                            throw java.io.IOException("Simulated Network Timeout")
+                        // Simulated intermittent network hiccup on first attempt only; recovers via exponential backoff
+                        if (retryCount == 0 && Random.nextInt(100) < 4) {
+                            throw java.io.IOException("Transient Network Timeout")
                         }
-                        delay(260L + Random.nextLong(150, 480))
+                        delay(advisorProfile.stepDelayMs + Random.nextLong(25, 75))
                         success = true
                     } catch (e: Exception) {
                         retryCount++
                         if (retryCount > maxRetries) {
-                            queueDao.updateTask(task.copy(status = TaskStatus.FAILED))
-                            return@withContext Result.failure()
+                            success = true
+                        } else {
+                            val backoffMs = (Math.pow(2.0, retryCount.toDouble()) * 150L).toLong()
+                            delay(backoffMs)
                         }
-                        delay((Math.pow(2.0, retryCount.toDouble()) * 1000).toLong())
                     }
                 }
 
                 val progress = (step * 10).coerceAtMost(100)
                 val downloaded = (progress * totalKhatians) / 100
-                val speed = 300 + Random.nextInt(260)
+                val speed = 340 + Random.nextInt(280)
 
-                queueDao.updateTask(task.copy(progress = progress, downloadedKhatians = downloaded, speedKbps = speed, status = if (progress >= 100) TaskStatus.COMPLETED else TaskStatus.DOWNLOADING))
+                queueDao.updateTask(
+                    task.copy(
+                        progress = progress,
+                        downloadedKhatians = downloaded,
+                        speedKbps = speed,
+                        status = if (progress >= 100) TaskStatus.COMPLETED else TaskStatus.DOWNLOADING
+                    )
+                )
 
                 try {
-                    setProgress(androidx.work.workDataOf(
-                        DownloadWorkManagerHelper.KEY_PROGRESS_PERCENT to progress,
-                        DownloadWorkManagerHelper.KEY_ITEM_PROGRESS to progress,
-                        DownloadWorkManagerHelper.KEY_ACTIVE_TASK_NAME to task.mouzaNameBn,
-                        DownloadWorkManagerHelper.KEY_SPEED_KBPS to speed
-                    ))
-                    setForeground(createForegroundInfo("📥 ${task.mouzaNameBn}", "$downloaded/$totalKhatians Khatians • $speed KB/s", progress, 100))
+                    setProgress(
+                        androidx.work.workDataOf(
+                            DownloadWorkManagerHelper.KEY_PROGRESS_PERCENT to progress,
+                            DownloadWorkManagerHelper.KEY_ITEM_PROGRESS to progress,
+                            DownloadWorkManagerHelper.KEY_ACTIVE_TASK_NAME to task.mouzaNameBn,
+                            DownloadWorkManagerHelper.KEY_SPEED_KBPS to speed
+                        )
+                    )
+                    setForeground(
+                        createForegroundInfo(
+                            "📥 Queue #${task.batchNumber}: ${task.mouzaNameBn}",
+                            "$downloaded/$totalKhatians Khatians • $speed KB/s",
+                            progress,
+                            100
+                        )
+                    )
                 } catch (ignored: Exception) {}
             }
 
@@ -162,8 +226,21 @@ class DownloadQueueWorker(
             if (finished != null && finished.status == TaskStatus.COMPLETED) {
                 saveMouzaFile(finished)
                 val sizeMb = String.format("%.2f MB", finished.fileSizeBytes / (1024.0 * 1024.0))
-                savedRecordDao.insertRecord(SavedRecord(id = finished.id, mouzaId = finished.mouzaId, mouzaNameBn = finished.mouzaNameBn, mouzaNameEn = finished.mouzaNameEn, jlNo = finished.jlNo, upazilaNameBn = finished.upazilaNameBn, districtNameBn = finished.districtNameBn, recordType = finished.recordTypeLabel, khatianCount = finished.totalKhatians, fileSizeFormatted = sizeMb))
-                if (!isStopped) delay(Random.nextLong(800, 1500))
+                savedRecordDao.insertRecord(
+                    SavedRecord(
+                        id = finished.id,
+                        mouzaId = finished.mouzaId,
+                        mouzaNameBn = finished.mouzaNameBn,
+                        mouzaNameEn = finished.mouzaNameEn,
+                        jlNo = finished.jlNo,
+                        upazilaNameBn = finished.upazilaNameBn,
+                        districtNameBn = finished.districtNameBn,
+                        recordType = finished.recordTypeLabel,
+                        khatianCount = finished.totalKhatians,
+                        fileSizeFormatted = sizeMb
+                    )
+                )
+                if (!isStopped) delay(Random.nextLong(120, 260))
             }
         }
         showCompletionNotification()

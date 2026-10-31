@@ -136,11 +136,13 @@ import com.example.data.model.District
 import com.example.data.model.DownloadTask
 import com.example.data.model.MasterArchive
 import com.example.data.model.Mouza
+import com.example.data.model.PlannedQueueSegment
 import com.example.data.model.RecordType
 import com.example.data.model.SavedRecord
 import com.example.data.model.TaskStatus
 import com.example.data.model.Upazila
 import com.example.data.model.UpazilaFetchInfo
+import com.example.util.DeviceNetworkDependencyProfile
 import com.example.ui.theme.AmberAccent
 import com.example.ui.theme.AmberContainer
 import com.example.ui.theme.AmberDark
@@ -172,6 +174,8 @@ fun LRMassDownloaderScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val savedRecords by viewModel.savedRecords.collectAsState()
+    val masterLedgerEntries by viewModel.masterLedgerEntries.collectAsState()
+    val geoImportHistory by viewModel.geographyImportHistory.collectAsState()
 
     val availableMouzas = viewModel.currentMouzas
     val filteredMouzas = remember(availableMouzas, uiState.searchQuery) {
@@ -386,7 +390,38 @@ fun LRMassDownloaderScreen(
                 }
             }
 
-            // 1. Cascading State Filter Card with "Select All Documents" button
+            // 0. National 8-Division, 64-District, Multi-Upazila & Select-All-Mouzas Explorer Card
+            item {
+                NationalGeographicExplorerCard(
+                    divisions = viewModel.allDivisions,
+                    selectedDivisionId = uiState.selectedDivisionId,
+                    districtsInDivision = viewModel.districtsInSelectedDivision,
+                    selectedDistrictId = uiState.selectedDistrictId,
+                    upazilasInDistrict = viewModel.currentUpazilas,
+                    selectedUpazilaIds = uiState.selectedUpazilaIds,
+                    coverageSummary = uiState.geographyCoverageSummary,
+                    selectedRetrievalMode = uiState.selectedRetrievalMode,
+                    archivedDocsCount = savedRecords.size.coerceAtLeast(masterLedgerEntries.size),
+                    onSelectDivision = { viewModel.onDivisionChanged(it) },
+                    onSelectDistrict = { viewModel.onDistrictChanged(it) },
+                    onToggleUpazila = { viewModel.toggleUpazilaSelection(it) },
+                    onSelectAllUpazilas = { viewModel.selectAllUpazilasInDistrict(autoSelectAllMouzas = true) },
+                    onDeselectAllUpazilas = { viewModel.deselectAllUpazilasInDistrict() },
+                    onSelectRetrievalMode = { viewModel.setRetrievalMode(it) },
+                    onOpenPreQueueConfirmation = {
+                        if (uiState.selectedMouzaIds.isEmpty()) {
+                            viewModel.selectAllUpazilasInDistrict(autoSelectAllMouzas = true)
+                        }
+                        viewModel.setShowPreQueueConfirmationDialog(true)
+                    },
+                    onOpenPdfImportDialog = { viewModel.setShowPdfImportDialog(true) },
+                    onOpenGeoUpdateDialog = { viewModel.setShowGeoUpdateDialog(true) },
+                    onOpenMasterLedger = { viewModel.setShowHistoryDialog(true) },
+                    onOpenUserAssistedBrowser = { viewModel.openUserAssistedBrowserForTask(context) }
+                )
+            }
+
+            // 1. Cascading State Filter Card with Automatic Full Selection & Network/Device Queue Profile
             item {
                 CascadingHierarchyCard(
                     allDistricts = viewModel.allDistricts,
@@ -394,24 +429,38 @@ fun LRMassDownloaderScreen(
                     onDistrictSelected = { viewModel.onDistrictChanged(it) },
                     upazilas = viewModel.currentUpazilas,
                     selectedUpazilaId = uiState.selectedUpazilaId,
-                    onUpazilaSelected = { viewModel.onUpazilaChanged(it) },
+                    onUpazilaSelected = {
+                        viewModel.onUpazilaChanged(
+                            newUpazilaId = it,
+                            autoStartQueues = uiState.isAutoQueueOnUpazilaSelect
+                        )
+                    },
                     selectedRecordTypes = uiState.selectedRecordTypes,
                     onToggleRecordType = { viewModel.toggleRecordType(it) },
                     onSelectAllRecordTypes = { viewModel.selectAllRecordTypes() },
                     selectedDownloadFormat = uiState.selectedDownloadFormat,
-                    onDownloadFormatSelected = { viewModel.setDownloadFormat(it) }
+                    onDownloadFormatSelected = { viewModel.setDownloadFormat(it) },
+                    selectedMouzaCount = uiState.selectedMouzaIds.size,
+                    selectedLandRecordsCount = uiState.selectedLandRecordsCount,
+                    deviceNetworkProfile = uiState.deviceNetworkProfile,
+                    plannedQueuesCount = uiState.plannedQueues.size,
+                    isAutoQueueOnUpazilaSelect = uiState.isAutoQueueOnUpazilaSelect,
+                    onToggleAutoQueueOnUpazilaSelect = { viewModel.setAutoQueueOnUpazilaSelect(it) }
                 )
             }
 
-            // 2. Mouza Registry & 7-Mouza Sequential Batch Selection Card
+            // 2. Mouza Registry & Adaptive Multi-Queue Selection Card
             item {
                 MouzaRegistryCard(
                     currentUpazilaName = viewModel.currentUpazila?.nameBn,
                     selectedCount = uiState.selectedMouzaIds.size,
                     totalCount = uiState.targetTotalMouzas.coerceAtLeast(availableMouzas.size),
                     downloadedCount = uiState.downloadedMouzaIds.size,
+                    selectedLandRecordsCount = uiState.selectedLandRecordsCount,
                     currentBatchNumber = uiState.currentBatchNumber,
                     totalBatches = viewModel.totalBatches,
+                    batchSize = uiState.batchSize,
+                    plannedQueues = uiState.plannedQueues,
                     searchQuery = uiState.searchQuery,
                     onSearchQueryChange = { viewModel.onSearchQueryChanged(it) },
                     onSelectAll = { viewModel.selectAllMouzas() },
@@ -443,7 +492,7 @@ fun LRMassDownloaderScreen(
                 )
             }
 
-            // 3. Concurrency-Limited Queue HUD Card with Anti-Freeze
+            // 3. Concurrency-Limited Queue HUD Card with Anti-Freeze & Multi-Queue Pipeline
             item {
                 QueueHudCard(
                     totalTasks = totalTasks,
@@ -455,6 +504,8 @@ fun LRMassDownloaderScreen(
                     totalBatches = viewModel.totalBatches,
                     targetTotalMouzas = uiState.targetTotalMouzas,
                     downloadedMouzasCount = uiState.downloadedMouzaIds.size,
+                    plannedQueues = uiState.plannedQueues,
+                    deviceNetworkProfile = uiState.deviceNetworkProfile,
                     isPaused = uiState.isPaused,
                     isWorkManagerActive = uiState.isWorkManagerActive,
                     useWorkManagerService = uiState.useWorkManagerBackgroundService,
@@ -536,6 +587,38 @@ fun LRMassDownloaderScreen(
     if (uiState.isShowingApkInfoDialog) {
         ApkDownloadDialog(
             onDismiss = { viewModel.setShowApkInfoDialog(false) }
+        )
+    }
+
+    // Pre-Queue Confirmation Summary Dialog (Step 5)
+    if (uiState.isShowingPreQueueConfirmationDialog) {
+        PreQueueConfirmationSummaryDialog(
+            summary = uiState.geographyCoverageSummary,
+            batchSize = uiState.batchSize,
+            retrievalMode = uiState.selectedRetrievalMode,
+            onConfirmCreateQueue = { viewModel.queueSelectedDownloads() },
+            onDismiss = { viewModel.setShowPreQueueConfirmationDialog(false) }
+        )
+    }
+
+    // Genuine PDF Import & SHA-256 Verification Dialog
+    if (uiState.isShowingPdfImportDialog) {
+        PdfImportAndVerificationDialog(
+            lastStatusMessage = uiState.lastImportStatusMessage,
+            onImportPdfBytes = { bytes, name, khatian, dag, owner, guardian, survey ->
+                viewModel.importUserPdfDocument(context, bytes, name, khatian, dag, owner, guardian, survey)
+            },
+            onDismiss = { viewModel.setShowPdfImportDialog(false) }
+        )
+    }
+
+    // Geographic Database Runtime JSON Update Dialog
+    if (uiState.isShowingGeoUpdateDialog) {
+        GeographicDatabaseUpdateDialog(
+            importHistory = geoImportHistory,
+            lastStatusMessage = uiState.lastImportStatusMessage,
+            onImportJson = { jsonPayload -> viewModel.importGeographyDatasetJson(jsonPayload) },
+            onDismiss = { viewModel.setShowGeoUpdateDialog(false) }
         )
     }
 }
@@ -669,27 +752,27 @@ fun UpazilaFetchCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.Info,
+                    imageVector = Icons.Default.DoneAll,
                     contentDescription = null,
                     tint = EmeraldDark,
                     modifier = Modifier.size(24.dp)
                 )
             }
 
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = "উপজেলা জরিপ ইনডেক্স যাচাই",
+                        text = "উপজেলা নির্বাচন সম্পন্ন • সকল মৌজা ও রেকর্ড সিলেক্টেড",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
                             color = EmeraldPrimary
                         )
                     )
                     Text(
-                        text = "Verified Registry",
+                        text = "100% Auto-Selected",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
@@ -701,12 +784,12 @@ fun UpazilaFetchCard(
                     )
                 }
                 Text(
-                    text = "${fetchInfo.upazilaNameBn} উপজেলায় মোট ${fetchInfo.totalMouzaCount}টি মৌজা শনাক্ত হয়েছে",
+                    text = "${fetchInfo.upazilaNameBn} উপজেলার সকল ${fetchInfo.totalMouzaCount}টি মৌজা এবং মোট ${fetchInfo.totalLandRecordsCount}টি খতিয়ান একসাথে সিলেক্ট হয়েছে",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.ExtraBold),
                     color = Slate900
                 )
                 Text(
-                    text = "টার্গেট: ৭টি করে ক্রমিক মোট ${fetchInfo.batchCount}টি ব্যাচে ${fetchInfo.totalMouzaCount}টি মৌজার খতিয়ান সংগ্রহ হবে (বর্তমানে ব্যাচ #$currentBatch, সম্পন্ন: $downloadedCount/${fetchInfo.totalMouzaCount})",
+                    text = "নেটওয়ার্ক (${fetchInfo.networkProfileLabel}) ও ডিভাইস সক্ষমতা অনুযায়ী প্রতি কিউতে ${fetchInfo.mouzasPerQueue}টি করে মোট ${fetchInfo.batchCount}টি কিউ তৈরি হয়েছে। একের পর এক কিউ ডাউনলোড চলবে (বর্তমান কিউ #$currentBatch/${fetchInfo.batchCount} • সম্পন্ন: $downloadedCount/${fetchInfo.totalMouzaCount} মৌজা)।",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = Slate600
                 )
@@ -1895,7 +1978,13 @@ fun CascadingHierarchyCard(
     onToggleRecordType: (RecordType) -> Unit,
     onSelectAllRecordTypes: () -> Unit,
     selectedDownloadFormat: DownloadFormat,
-    onDownloadFormatSelected: (DownloadFormat) -> Unit
+    onDownloadFormatSelected: (DownloadFormat) -> Unit,
+    selectedMouzaCount: Int = 0,
+    selectedLandRecordsCount: Int = 0,
+    deviceNetworkProfile: DeviceNetworkDependencyProfile? = null,
+    plannedQueuesCount: Int = 0,
+    isAutoQueueOnUpazilaSelect: Boolean = true,
+    onToggleAutoQueueOnUpazilaSelect: (Boolean) -> Unit = {}
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -2202,6 +2291,205 @@ fun CascadingHierarchyCard(
                     }
                 }
             }
+
+            // 5. Auto-Selection & Network/Device Dependency Multi-Queue Banner
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = EmeraldContainer.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, EmeraldPrimary.copy(alpha = 0.4f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("network_device_queue_profile_banner")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DoneAll,
+                                contentDescription = null,
+                                tint = EmeraldDark,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = if (selectedUpazilaId != null) {
+                                        "স্বয়ংক্রিয় সিলেকশন: $selectedMouzaCount টি মৌজা • $selectedLandRecordsCount টি খতিয়ান"
+                                    } else {
+                                        "উপজেলা সিলেক্ট করলেই সকল মৌজা ও খতিয়ান একসাথে সিলেক্ট হবে"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = EmeraldDark
+                                    )
+                                )
+                                Text(
+                                    text = deviceNetworkProfile?.let {
+                                        "নেটওয়ার্ক ও ডিভাইস নির্ভর কিউ: ${it.profileTitleBn} ➔ প্রতি কিউতে ${it.mouzasPerQueue}টি মৌজা (মোট $plannedQueuesCount টি কিউ)"
+                                    } ?: "নেটওয়ার্ক ও ডিভাইস সক্ষমতা অনুযায়ী ক্রমিক মাল্টি-কিউ প্রস্তুত",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 11.sp,
+                                        color = Slate700
+                                    )
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Auto-Queue",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = EmeraldDark,
+                                    fontSize = 10.sp
+                                )
+                            )
+                            Switch(
+                                checked = isAutoQueueOnUpazilaSelect,
+                                onCheckedChange = onToggleAutoQueueOnUpazilaSelect,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = EmeraldPrimary,
+                                    checkedTrackColor = EmeraldContainer
+                                ),
+                                modifier = Modifier.testTag("auto_queue_on_upazila_select_switch")
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SequentialMultiQueuePipelineStrip(
+    plannedQueues: List<PlannedQueueSegment>,
+    activeBatchNumber: Int,
+    modifier: Modifier = Modifier
+) {
+    if (plannedQueues.isEmpty()) return
+
+    val completedQueues = plannedQueues.count { it.status == TaskStatus.COMPLETED }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Slate100)
+            .border(1.dp, Slate200, RoundedCornerShape(16.dp))
+            .padding(12.dp)
+            .testTag("sequential_multi_queue_strip"),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Layers,
+                    contentDescription = null,
+                    tint = EmeraldPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "ক্রমিক মাল্টি-কিউ পাইপলাইন (Queues 1 ➔ ${plannedQueues.size})",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Slate900
+                    )
+                )
+            }
+            Text(
+                text = "Completed Queues: $completedQueues / ${plannedQueues.size}",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = EmeraldDark
+                ),
+                modifier = Modifier
+                    .background(EmeraldContainer, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            plannedQueues.forEach { q ->
+                val isCompleted = q.status == TaskStatus.COMPLETED
+                val isExecuting = q.status == TaskStatus.DOWNLOADING ||
+                    (!isCompleted && q.queueNumber == activeBatchNumber)
+
+                val bgColor = when {
+                    isCompleted -> EmeraldContainer
+                    isExecuting -> BlueContainer
+                    else -> Color.White
+                }
+                val borderColor = when {
+                    isCompleted -> EmeraldPrimary
+                    isExecuting -> BlueAccent
+                    else -> Slate200
+                }
+                val labelColor = when {
+                    isCompleted -> EmeraldDark
+                    isExecuting -> BlueAccent
+                    else -> Slate700
+                }
+                val stateTag = when {
+                    isCompleted -> "✓ Done"
+                    isExecuting -> "⚡ Active (${q.progressPercent}%)"
+                    else -> "⏳ Next"
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = bgColor,
+                    border = BorderStroke(1.dp, borderColor),
+                    modifier = Modifier.testTag("queue_segment_badge_${q.queueNumber}")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text(
+                            text = "Queue #${q.queueNumber}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                color = labelColor
+                            )
+                        )
+                        Text(
+                            text = "(${q.completedMouzasCount}/${q.mouzaCount} মৌজা • $stateTag)",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.sp,
+                                color = labelColor.copy(alpha = 0.85f)
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -2212,8 +2500,11 @@ fun MouzaRegistryCard(
     selectedCount: Int,
     totalCount: Int,
     downloadedCount: Int,
+    selectedLandRecordsCount: Int = 0,
     currentBatchNumber: Int,
     totalBatches: Int,
+    batchSize: Int = 8,
+    plannedQueues: List<PlannedQueueSegment> = emptyList(),
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSelectAll: () -> Unit,
@@ -2264,7 +2555,7 @@ fun MouzaRegistryCard(
                         }
                     }
                     Text(
-                        text = "Batch $currentBatchNumber of $totalBatches • ৭টি করে ক্রমিক কিউ (নো রিপিট)",
+                        text = "Queue #$currentBatchNumber of $totalBatches • প্রতি কিউতে $batchSize টি মৌজা • মোট খতিয়ান: $selectedLandRecordsCount",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = Slate500
                     )
@@ -2293,6 +2584,13 @@ fun MouzaRegistryCard(
                         )
                     }
                 }
+            }
+
+            if (plannedQueues.isNotEmpty()) {
+                SequentialMultiQueuePipelineStrip(
+                    plannedQueues = plannedQueues,
+                    activeBatchNumber = currentBatchNumber
+                )
             }
 
             // Toolbar
@@ -2422,7 +2720,7 @@ fun MouzaRegistryCard(
                 }
             }
 
-            // Primary Queue CTA
+            // Primary Multi-Queue CTA
             Button(
                 onClick = onQueueSelected,
                 enabled = selectedCount > 0,
@@ -2439,7 +2737,7 @@ fun MouzaRegistryCard(
                 Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Queue Batch (Next $selectedCount Mouzas - No Repeats)",
+                    text = "Start All ${totalBatches.coerceAtLeast(1)} Queues ($selectedCount Mouzas • $selectedLandRecordsCount Records)",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                 )
             }
@@ -2973,6 +3271,8 @@ fun QueueHudCard(
     totalBatches: Int,
     targetTotalMouzas: Int,
     downloadedMouzasCount: Int,
+    plannedQueues: List<PlannedQueueSegment> = emptyList(),
+    deviceNetworkProfile: DeviceNetworkDependencyProfile? = null,
     isPaused: Boolean,
     isWorkManagerActive: Boolean,
     useWorkManagerService: Boolean,
@@ -3119,6 +3419,13 @@ fun QueueHudCard(
                 SummaryPill(title = "Queued", count = pendingTasks, bgColor = AmberContainer, textColor = AmberDark, modifier = Modifier.weight(1f))
             }
 
+            if (plannedQueues.isNotEmpty()) {
+                SequentialMultiQueuePipelineStrip(
+                    plannedQueues = plannedQueues,
+                    activeBatchNumber = currentBatch
+                )
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -3131,7 +3438,8 @@ fun QueueHudCard(
             ) {
                 Icon(Icons.Default.Layers, contentDescription = null, tint = EmeraldPrimary, modifier = Modifier.size(18.dp))
                 Text(
-                    text = "Sequential Auto-Advance: When this batch of 7 completes, the next 7 are automatically queued without repeats until all $targetTotalMouzas mouzas finish.",
+                    text = deviceNetworkProfile?.queueRuleDescriptionEn
+                        ?: "Sequential Multi-Queue Execution: Queues 1 through $totalBatches execute one by one automatically until all $targetTotalMouzas mouzas finish.",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = Slate700
                 )
@@ -3412,34 +3720,46 @@ fun DownloadTaskCard(task: DownloadTask) {
                         Text("Done", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = EmeraldDark))
                     }
                 }
-                TaskStatus.DOWNLOADING -> {
+                TaskStatus.DOWNLOADING, TaskStatus.AUTHENTICATING, TaskStatus.VERIFYING -> {
+                    val activeLabel = when (task.status) {
+                        TaskStatus.AUTHENTICATING -> "Auth"
+                        TaskStatus.VERIFYING -> "Verifying"
+                        else -> "${task.progress}%"
+                    }
                     Text(
-                        text = "${task.progress}%",
+                        text = activeLabel,
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, color = BlueAccent),
                         modifier = Modifier
                             .background(BlueContainer, RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
-                TaskStatus.PENDING -> {
+                TaskStatus.PENDING, TaskStatus.WAITING_FOR_NETWORK -> {
+                    val pendingLabel = if (task.status == TaskStatus.WAITING_FOR_NETWORK) "Waiting Net" else "Pending"
                     Text(
-                        text = "Pending",
+                        text = pendingLabel,
                         style = MaterialTheme.typography.labelSmall.copy(color = Slate500),
                         modifier = Modifier
                             .background(Slate200, RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
-                TaskStatus.PAUSED -> {
+                TaskStatus.PAUSED, TaskStatus.WAITING_FOR_USER -> {
+                    val pausedLabel = if (task.status == TaskStatus.WAITING_FOR_USER) "User Assist" else "Paused"
                     Text(
-                        text = "Paused",
+                        text = pausedLabel,
                         style = MaterialTheme.typography.labelSmall.copy(color = AmberDark),
                         modifier = Modifier
                             .background(AmberContainer, RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
-                TaskStatus.FAILED -> {
+                TaskStatus.FAILED, TaskStatus.CANCELLED, TaskStatus.UNAVAILABLE -> {
+                    val failLabel = when (task.status) {
+                        TaskStatus.CANCELLED -> "Cancelled"
+                        TaskStatus.UNAVAILABLE -> "Unavailable"
+                        else -> "Failed"
+                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -3448,7 +3768,7 @@ fun DownloadTaskCard(task: DownloadTask) {
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Icon(Icons.Default.Error, contentDescription = null, tint = RoseError, modifier = Modifier.size(12.dp))
-                        Text("Failed", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = RoseError))
+                        Text(failLabel, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = RoseError))
                     }
                 }
             }

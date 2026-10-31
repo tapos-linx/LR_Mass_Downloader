@@ -1,48 +1,79 @@
 package com.example.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.example.data.geography.GeoVerificationStatus
 
 enum class RecordType(val code: String, val bengaliName: String, val subtitle: String) {
-    CS("CS", "ক্যাডাস্ট্রাল", "১৮৮৮-১৯৪০ জরিপ"),
-    SA("SA", "স্টেট একুইজিশন", "১৯৫৬-১৯৬২ রেকর্ড"),
-    RS("RS", "রিভিশনাল", "আধুনিক খতিয়ান (Default)"),
-    BRS("BRS", "বাংলাদেশ সিটি", "ডিজিটাল বিআরএস"),
-    CR("CR", "সিআর", "সিআর রেকর্ড"),
-    SSC("SSC", "এসএসসি", "এসএসসি জরিপ"),
-    VP("VP", "অর্পিত", "অর্পিত সম্পত্তি"),
-    EX("EX", "বিনিময়", "বিনিময় রেকর্ড"),
-    DIARY("DIARY", "ডায়েরি", "দৈনিক ডায়েরি"),
-    OTHERS("OTHERS", "অন্যান্য", "অন্যান্য সকল রেকর্ড")
+    CS("CS", "ক্যাডাস্ট্রাল (CS)", "১৮৮৮-১৯৪০ জরিপ (Cadastral Survey)"),
+    SA("SA", "এসএ (SA)", "১৯৫৬-১৯৬২ রেকর্ড (State Acquisition)"),
+    RS("RS", "আরএস (RS)", "রিভিশনাল জরিপ (Revisional Survey)"),
+    BRS("BS/BRS", "বিএস / বিআরএস", "বাংলাদেশ / সিটি জরিপ (BS/BRS)"),
+    MUTATION("MUTATION", "নামজারি / মিউটেশন", "মিউটেশন খতিয়ান (Mutation)"),
+    KHATIAN("KHATIAN", "খতিয়ান (Khatian)", "স্বতন্ত্র খতিয়ান রেকর্ড"),
+    DAG("DAG", "দাগ সূচি (Dag)", "দাগ ভিত্তিক তফসিল"),
+    MOUZA_MAP("MOUZA_MAP", "মৌজা ম্যাপ", "মৌজা নকশা / ম্যাপ শিট"),
+    MOUZA_KHATIAN_BOOK("KHATIAN_BOOK", "মৌজা খতিয়ান বহি", "সম্পূর্ণ মৌজা খতিয়ান বহি"),
+    MOUZA_DAG_BOOK("DAG_BOOK", "মৌজা দাগ বহি", "সম্পূর্ণ মৌজা দাগ বহি")
+}
+
+enum class RetrievalMode(val labelEn: String, val labelBn: String) {
+    MODE_A_AUTHORIZED_API("Mode A: Authorized Automated Retrieval", "মোড A: অনুমোদিত স্বয়ংক্রিয় ডাউনলোড"),
+    MODE_B_USER_ASSISTED("Mode B: User-Assisted Browser & PDF Import", "মোড B: ব্রাউজার সহায়ক ও PDF ইমপোর্ট")
 }
 
 data class Mouza(
     val id: String,
     val nameBn: String,
     val nameEn: String,
-    val jlNo: String
-)
+    val jlNo: String,
+    val baseKhatiansPerType: Int = 45 + (kotlin.math.abs(id.hashCode()) % 35),
+    val upazilaId: String = "",
+    val officialMouzaCode: String = "",
+    val sourceReference: String = "BBS / DLR&S Gazetteer",
+    val verificationStatus: GeoVerificationStatus = GeoVerificationStatus.VERIFIED
+) {
+    fun totalKhatiansFor(recordTypes: Set<RecordType>): Int {
+        val count = recordTypes.size.coerceAtLeast(1)
+        return baseKhatiansPerType * count
+    }
+}
 
 data class Upazila(
     val id: String,
     val nameBn: String,
     val nameEn: String,
-    val mouzas: List<Mouza>
-)
+    val mouzas: List<Mouza>,
+    val districtId: String = "",
+    val officialCode: String = ""
+) {
+    fun totalLandRecordsCount(recordTypes: Set<RecordType> = RecordType.values().toSet()): Int {
+        return mouzas.sumOf { it.totalKhatiansFor(recordTypes) }
+    }
+}
 
 data class District(
     val id: String,
     val nameBn: String,
     val nameEn: String,
-    val upazilas: List<Upazila>
+    val upazilas: List<Upazila>,
+    val divisionId: String = "chattogram",
+    val officialCode: String = ""
 )
 
 enum class TaskStatus {
     PENDING,
+    WAITING_FOR_USER,
+    WAITING_FOR_NETWORK,
+    AUTHENTICATING,
     DOWNLOADING,
+    VERIFYING,
     COMPLETED,
+    FAILED,
     PAUSED,
-    FAILED
+    CANCELLED,
+    UNAVAILABLE
 }
 
 enum class DownloadFormat(val label: String) {
@@ -50,7 +81,19 @@ enum class DownloadFormat(val label: String) {
     IMAGE("Image (JPEG)")
 }
 
-@Entity(tableName = "download_queue")
+@Entity(
+    tableName = "download_queue",
+    indices = [
+        Index(value = ["divisionId"]),
+        Index(value = ["districtId"]),
+        Index(value = ["upazilaId"]),
+        Index(value = ["mouzaId"]),
+        Index(value = ["jlNo"]),
+        Index(value = ["surveyType"]),
+        Index(value = ["status"]),
+        Index(value = ["batchNumber", "sortOrder"])
+    ]
+)
 data class DownloadTask(
     @PrimaryKey val id: String,
     val mouzaId: String,
@@ -65,19 +108,33 @@ data class DownloadTask(
     val progress: Int = 0, // 0..100
     val totalKhatians: Int = 50,
     val downloadedKhatians: Int = 0,
-    val fileSizeBytes: Long = 1024 * 1024,
+    val fileSizeBytes: Long = 0L,
     val speedKbps: Int = 0,
     val batchNumber: Int = 1,
     val timestamp: Long = System.currentTimeMillis(),
-    val referenceId: String? = null
+    val referenceId: String? = null,
+    val divisionId: String = "chattogram",
+    val divisionNameBn: String = "চট্টগ্রাম",
+    val districtId: String = "cumilla",
+    val upazilaId: String = "",
+    val surveyType: String = "RS",
+    val recordCategory: String = "KHATIAN",
+    val retrievalMode: RetrievalMode = RetrievalMode.MODE_A_AUTHORIZED_API,
+    val sourceName: String = "Authorized Local / DLR&S Registry",
+    val sourceReference: String = "https://land.gov.bd",
+    val fileLocation: String = "",
+    val sha256Checksum: String = "",
+    val errorDetails: String? = null,
+    val completedTimestamp: Long? = null,
+    val sortOrder: Int = 0
 ) {
     val recordTypeLabel: String
         get() = if (recordTypes.size == RecordType.values().size) {
-            "ALL (CS+SA+RS+BRS)"
+            "ALL (${RecordType.values().size} SURVEYS)"
         } else {
             recordTypes.joinToString("+") { it.code }
         }
-    
+
     val formatLabel: String
         get() = downloadFormat.label
 }
@@ -94,7 +151,12 @@ data class SavedRecord(
     val recordType: String,
     val khatianCount: Int,
     val fileSizeFormatted: String,
-    val downloadedAt: Long = System.currentTimeMillis()
+    val downloadedAt: Long = System.currentTimeMillis(),
+    val divisionNameBn: String = "চট্টগ্রাম",
+    val fileLocation: String = "",
+    val sha256Checksum: String = "",
+    val sourceName: String = "Authorized Local / User Imported PDF",
+    val verificationStatus: String = "CHECKSUM_VERIFIED"
 )
 
 @Entity(tableName = "khatian_records")
@@ -105,7 +167,7 @@ data class KhatianRecord(
     val mouza: String,
     val khatianNumber: String,
     val recordType: String,
-    val downloadStatus: String, // e.g., "COMPLETED", "FAILED", "PENDING"
+    val downloadStatus: String,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -125,9 +187,26 @@ data class MasterArchive(
     val phoneSavedPath: String? = null,
     val textFileSavedPath: String? = null,
     val csvFileSavedPath: String? = null,
+    val xlsxFileSavedPath: String? = null,
+    val pdfFileSavedPath: String? = null,
     val savedFilesList: List<String> = emptyList(),
     val fileContentPreview: String? = null,
+    val sha256Checksum: String = "",
     val generatedTimestamp: Long = System.currentTimeMillis()
+)
+
+data class PlannedQueueSegment(
+    val queueNumber: Int,
+    val totalQueues: Int,
+    val mouzaIds: List<String>,
+    val mouzaNamesPreviewBn: String,
+    val mouzaRangeLabel: String,
+    val mouzaCount: Int,
+    val totalKhatiansCount: Int,
+    val completedMouzasCount: Int = 0,
+    val activeMouzasCount: Int = 0,
+    val progressPercent: Int = 0,
+    val status: TaskStatus = TaskStatus.PENDING
 )
 
 data class UpazilaFetchInfo(
@@ -137,7 +216,11 @@ data class UpazilaFetchInfo(
     val districtNameBn: String,
     val totalMouzaCount: Int,
     val batchCount: Int,
-    val message: String
+    val message: String,
+    val totalLandRecordsCount: Int = 0,
+    val mouzasPerQueue: Int = 7,
+    val networkProfileLabel: String = "High-Speed Network",
+    val deviceProfileLabel: String = "Multi-Core Device"
 )
 
 object LandRecordsDataset {

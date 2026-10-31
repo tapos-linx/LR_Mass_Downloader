@@ -20,14 +20,14 @@ import kotlinx.coroutines.test.runTest
 import org.robolectric.shadows.ShadowLooper
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class ExampleRobolectricTest {
 
     @Test
     fun testAppNameString() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appName = context.getString(R.string.app_name)
-        assertEquals("LR Mass Downloader", appName)
+        assertEquals("LR get BD", appName)
     }
 
     @Test
@@ -61,8 +61,8 @@ class ExampleRobolectricTest {
         assertNull(viewModel.uiState.value.selectedUpazilaId)
         assertNull(viewModel.uiState.value.upazilaFetchInfo)
 
-        // 2. Select Upazila: FIRST fetch how many mouzas in that upazila!
-        viewModel.onUpazilaChanged("debidwar")
+        // 2. Select Upazila (without auto-start so we can inspect selection & multi-queue plan)
+        viewModel.onUpazilaChanged("debidwar", autoStartQueues = false)
         ShadowLooper.idleMainLooper()
 
         val state = viewModel.uiState.value
@@ -71,27 +71,21 @@ class ExampleRobolectricTest {
         assertEquals(136, state.targetTotalMouzas)
         assertEquals(136, state.upazilaFetchInfo?.totalMouzaCount)
 
-        // Verify selector strictly selects the first 7 mouzas for Batch 1 (not all 136)
-        assertEquals(7, state.selectedMouzaIds.size)
+        // Verify selecting an Upazila automatically selects ALL 136 Mouzas and ALL Land Record Types at once
+        assertEquals(136, state.selectedMouzaIds.size)
+        assertEquals(RecordType.values().size, state.selectedRecordTypes.size)
+        assertTrue(state.selectedLandRecordsCount > 0)
+        assertNotNull(state.deviceNetworkProfile)
+        assertTrue(state.plannedQueues.size > 1)
 
-        // 3. Test Select All Documents
-        viewModel.selectAllRecordTypes()
-        assertEquals(4, viewModel.uiState.value.selectedRecordTypes.size)
-
-        // 4. Test Enqueue
+        // 3. Test Enqueue creates multiple sequential queues (Batch #1 .. Batch #N) for all 136 Mouzas
         viewModel.queueSelectedDownloads()
         ShadowLooper.idleMainLooper()
 
-        assertEquals(7, viewModel.uiState.value.queue.size)
-        viewModel.uiState.value.queue.forEach { task ->
-            assertEquals(4, task.recordTypes.size)
-        }
-
-        // 5. Test Next 7 Selection without repeats
-        viewModel.clearQueue()
-        ShadowLooper.idleMainLooper()
-        viewModel.selectNextSevenMouzas()
-        assertEquals(7, viewModel.uiState.value.selectedMouzaIds.size)
+        assertEquals(136, viewModel.uiState.value.queue.size)
+        val distinctQueueNumbers = viewModel.uiState.value.queue.map { it.batchNumber }.distinct().sorted()
+        assertTrue(distinctQueueNumbers.size > 1)
+        assertEquals(1, distinctQueueNumbers.first())
     }
 
     @Test
@@ -194,5 +188,158 @@ class ExampleRobolectricTest {
             assertTrue(task.mouzaNameBn.contains(referenceIds[i]))
             assertEquals(com.example.data.model.TaskStatus.PENDING, task.status)
         }
+    }
+
+    @Test
+    fun testBangladesh8DivisionsAnd64DistrictsHierarchy() {
+        val divisions = com.example.data.geography.BangladeshGeographyCatalog.divisions
+        val districts = com.example.data.geography.BangladeshGeographyCatalog.districts
+        val upazilas = com.example.data.geography.BangladeshGeographyCatalog.upazilas
+
+        // Verify all 8 administrative divisions of Bangladesh exist
+        assertEquals(8, divisions.size)
+        val expectedDivisions = setOf(
+            "dhaka", "chattogram", "rajshahi", "khulna",
+            "barishal", "sylhet", "rangpur", "mymensingh"
+        )
+        assertEquals(expectedDivisions, divisions.map { it.id }.toSet())
+
+        // Verify all 64 official districts of Bangladesh exist and map to valid divisions
+        assertEquals(64, districts.size)
+        districts.forEach { dist ->
+            assertTrue(dist.divisionId in expectedDivisions)
+            assertTrue(dist.officialCode.isNotBlank())
+        }
+
+        // Verify every district has at least one verified Upazila
+        districts.forEach { dist ->
+            val distUpazilas = upazilas.filter { it.districtId == dist.id }
+            assertTrue("District ${dist.nameEn} must have upazilas", distUpazilas.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun testDuplicateMouzaDetectionAndJlNumberValidation() {
+        assertTrue(com.example.data.geography.BangladeshGeographyCatalog.isValidJlNumber("১২"))
+        assertTrue(com.example.data.geography.BangladeshGeographyCatalog.isValidJlNumber("136"))
+        assertFalse(com.example.data.geography.BangladeshGeographyCatalog.isValidJlNumber(""))
+        assertFalse(com.example.data.geography.BangladeshGeographyCatalog.isValidJlNumber("0"))
+        assertFalse(com.example.data.geography.BangladeshGeographyCatalog.isValidJlNumber("ABC"))
+
+        val m1 = com.example.data.geography.MouzaEntity(
+            id = "deb-1",
+            upazilaId = "debidwar",
+            nameEn = "Debidwar",
+            nameBn = "দেবিদ্বার",
+            jlNumber = "১৪",
+            officialMouzaCode = "DEB-14",
+            sourceReference = "BBS",
+            verificationStatus = com.example.data.geography.GeoVerificationStatus.VERIFIED,
+            lastVerifiedAt = 1000L
+        )
+        val m2Duplicate = m1.copy(id = "deb-dup", jlNumber = "14")
+        val duplicates = com.example.data.geography.BangladeshGeographyCatalog.detectDuplicateMouzas(listOf(m1, m2Duplicate))
+        assertEquals(1, duplicates.size)
+        assertEquals("deb-dup", duplicates.first().id)
+    }
+
+    @Test
+    fun testCriticalAcceptanceSelectAllUpazilasAndSevenMouzaBatchQueue() = runTest {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val viewModel = LRDownloaderViewModel(app)
+
+        // 1. Select the district (Brahmanbaria: 9 Upazilas, 946 Verified Mouzas)
+        viewModel.onDistrictChanged("brahmanbaria")
+        ShadowLooper.idleMainLooper()
+        assertEquals("brahmanbaria", viewModel.uiState.value.selectedDistrictId)
+
+        // 2. Select all Upazilas & 3-4. Automatically load and select all associated verified Mouzas
+        viewModel.selectAllUpazilasInDistrict(autoSelectAllMouzas = true)
+        ShadowLooper.idleMainLooper()
+
+        val stateAfterSelectAll = viewModel.uiState.value
+        assertEquals(9, stateAfterSelectAll.selectedUpazilaIds.size)
+        val totalMouzasInDistrict = viewModel.currentMouzas.size
+        assertTrue(totalMouzasInDistrict > 500)
+        assertEquals(totalMouzasInDistrict, stateAfterSelectAll.selectedMouzaIds.size)
+
+        // 5. Pause before queueing so we can deterministically inspect the generated batches
+        viewModel.togglePauseQueue()
+        viewModel.queueSelectedDownloads()
+        ShadowLooper.idleMainLooper()
+
+        val queuedTasks = viewModel.uiState.value.queue
+        // 6. Confirm that every eligible Mouza appears exactly once (duplicate-free)
+        assertEquals(totalMouzasInDistrict, queuedTasks.size)
+        assertEquals(totalMouzasInDistrict, queuedTasks.map { it.mouzaId }.distinct().size)
+
+        // 7. Confirm that tasks are divided into batches of seven (7 Mouzas per batch)
+        val batch1Tasks = queuedTasks.filter { it.batchNumber == 1 }
+        val batch2Tasks = queuedTasks.filter { it.batchNumber == 2 }
+        val batch3Tasks = queuedTasks.filter { it.batchNumber == 3 }
+        assertEquals(7, batch1Tasks.size)
+        assertEquals(7, batch2Tasks.size)
+        assertEquals(7, batch3Tasks.size)
+
+        val expectedTotalBatches = (totalMouzasInDistrict + 6) / 7
+        assertEquals(expectedTotalBatches, queuedTasks.maxOf { it.batchNumber })
+    }
+
+    @Test
+    fun testDocumentVerificationSha256AndPdfValidation() {
+        // 1. Reject fake plain-text disguised as PDF
+        val fakePdfBytes = "--- SIMULATED PDF LAND RECORD ---".toByteArray(Charsets.UTF_8)
+        val fakeResult = com.example.util.DocumentVerificationEngine.verifyDocumentBytes(
+            bytes = fakePdfBytes,
+            declaredMimeType = "application/pdf",
+            fileName = "fake.pdf"
+        )
+        assertFalse(fakeResult.isValid)
+        assertFalse(fakeResult.isPdfStructureValid)
+
+        // 2. Accept genuine binary PDF 1.4 with %PDF-1.4 header, objects, and %%EOF trailer
+        val validPdfBytes = com.example.util.DocumentVerificationEngine.generateValidPdfReportBytes(
+            title = "Test Archive Ledger",
+            lines = listOf("Division: Chattogram | District: Cumilla | Upazila: Debidwar")
+        )
+        val validResult = com.example.util.DocumentVerificationEngine.verifyDocumentBytes(
+            bytes = validPdfBytes,
+            declaredMimeType = "application/pdf",
+            fileName = "valid_ledger.pdf"
+        )
+        assertTrue(validResult.isValid)
+        assertTrue(validResult.isPdfStructureValid)
+        assertEquals(64, validResult.sha256Checksum.length)
+    }
+
+    @Test
+    fun testGeographicDatabaseRuntimeJsonUpdate() {
+        val sampleJson = """
+            {
+              "source_name": "BBS Gazetteer Update",
+              "source_url": "https://bbs.gov.bd",
+              "dataset_version": "2026.2",
+              "mouzas": [
+                {
+                  "upazila_id": "debidwar",
+                  "name_en": "Nabinagar North",
+                  "name_bn": "নবীনগর উত্তর",
+                  "jl_number": "140",
+                  "verified": true
+                },
+                {
+                  "upazila_id": "debidwar",
+                  "name_en": "Nabinagar North",
+                  "name_bn": "নবীনগর উত্তর",
+                  "jl_number": "140",
+                  "verified": true
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val parsed = com.example.data.geography.BangladeshGeographyCatalog.parseJsonGeographyUpdate(sampleJson)
+        assertEquals(1, parsed.mouzas.size)
+        assertEquals(1, parsed.errors.size) // Second identical entry caught as duplicate
     }
 }

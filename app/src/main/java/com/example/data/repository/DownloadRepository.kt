@@ -16,8 +16,10 @@ class DownloadRepository(
     suspend fun insertSavedRecord(record: SavedRecord) = savedRecordDao.insertRecord(record)
     suspend fun deleteSavedRecord(id: String) = savedRecordDao.deleteRecordById(id)
     suspend fun clearSavedRecords() = savedRecordDao.clearAllRecords()
+    suspend fun findSavedRecordBySha256(sha256: String): SavedRecord? = savedRecordDao.findBySha256(sha256)
 
     suspend fun getTaskById(taskId: String) = downloadQueueDao.getTaskById(taskId)
+    suspend fun getTaskByMouzaId(mouzaId: String) = downloadQueueDao.getTaskByMouzaId(mouzaId)
     suspend fun getPendingTasks() = downloadQueueDao.getPendingTasks()
     suspend fun getNextPendingTask() = downloadQueueDao.getNextPendingTask()
     suspend fun getAllTasksDirect() = downloadQueueDao.getAllTasksDirect()
@@ -28,6 +30,9 @@ class DownloadRepository(
     suspend fun insertTaskToQueue(task: DownloadTask) = downloadQueueDao.insertTask(task)
     suspend fun updateTaskInQueue(task: DownloadTask) = downloadQueueDao.updateTask(task)
     suspend fun deleteTaskFromQueue(taskId: String) = downloadQueueDao.deleteTaskById(taskId)
+    suspend fun deleteBatchFromQueue(batchNumber: Int) = downloadQueueDao.deleteBatch(batchNumber)
     suspend fun clearQueue() = downloadQueueDao.clearQueue()
     suspend fun resetInterruptedTasks() = downloadQueueDao.resetInterruptedTasks()
+    suspend fun cancelAllPendingTasks() = downloadQueueDao.cancelAllPendingTasks()
+    suspend fun markTaskUnavailable(taskId: String) = downloadQueueDao.markTaskUnavailable(taskId)
 }

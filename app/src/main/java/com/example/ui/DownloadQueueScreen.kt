@@ -109,7 +109,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.DownloadFormat
 import com.example.data.model.DownloadTask
+import com.example.data.model.PlannedQueueSegment
 import com.example.data.model.TaskStatus
+import com.example.util.DeviceNetworkDependencyProfile
 import com.example.ui.theme.AmberAccent
 import com.example.ui.theme.AmberContainer
 import com.example.ui.theme.AmberDark
@@ -333,6 +335,8 @@ fun DownloadQueueScreen(
                     totalSpeedKbps = totalSpeedKbps,
                     currentBatch = uiState.currentBatchNumber,
                     totalBatches = viewModel.totalBatches,
+                    plannedQueues = uiState.plannedQueues,
+                    deviceNetworkProfile = uiState.deviceNetworkProfile,
                     isWorkManagerActive = uiState.isWorkManagerActive,
                     useWorkManagerService = uiState.useWorkManagerBackgroundService,
                     antiBlockingDescription = uiState.antiBlockingDelayDescription,
@@ -732,6 +736,8 @@ private fun GovTechPipelineHeroCard(
     totalSpeedKbps: Int,
     currentBatch: Int,
     totalBatches: Int,
+    plannedQueues: List<PlannedQueueSegment> = emptyList(),
+    deviceNetworkProfile: DeviceNetworkDependencyProfile? = null,
     isWorkManagerActive: Boolean,
     useWorkManagerService: Boolean,
     antiBlockingDescription: String,
@@ -831,7 +837,7 @@ private fun GovTechPipelineHeroCard(
                             shape = RoundedCornerShape(999.dp)
                         ) {
                             Text(
-                                text = "Batch $currentBatch/$totalBatches",
+                                text = "Queue $currentBatch/$totalBatches",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     color = EmeraldDark
@@ -946,6 +952,24 @@ private fun GovTechPipelineHeroCard(
                         else -> EmeraldPrimary
                     },
                     trackColor = Slate200
+                )
+
+                deviceNetworkProfile?.let { profile ->
+                    Text(
+                        text = "${profile.profileTitleBn} • প্রতি কিউতে ${profile.mouzasPerQueue}টি মৌজা • একে একে শেষ মৌজা পর্যন্ত ডাউনলোড",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 11.sp,
+                            color = Slate600,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+            }
+
+            if (plannedQueues.isNotEmpty()) {
+                SequentialMultiQueuePipelineStrip(
+                    plannedQueues = plannedQueues,
+                    activeBatchNumber = currentBatch
                 )
             }
 
