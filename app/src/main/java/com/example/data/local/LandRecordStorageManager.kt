@@ -601,6 +601,55 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
         return saveFileToLandRecords(context, fileName, csvBuilder.toString(), "text/csv", subDir)
     }
 
+    /**
+     * Explicitly exports the Master Ledger metadata into a structured JSON file.
+     */
+    fun exportMetadataJson(
+        context: Context,
+        district: District,
+        upazila: Upazila,
+        ledgerEntries: List<MasterLedgerEntryEntity>
+    ): SavedFileResult {
+        val safeUpazilaName = sanitizeSegment(upazila.nameEn)
+        val fileName = "${sanitizeSegment(district.nameEn)}_${safeUpazilaName}_Master_Ledger_Metadata_${System.currentTimeMillis()}.json"
+        val subDir = "$LAND_RECORDS_SUBDIR/$LRGETBD_ROOT_SUBDIR/${sanitizeSegment(district.divisionId)}/${sanitizeSegment(district.nameEn)}/$safeUpazilaName/Master_Ledger"
+
+        val jsonBuilder = StringBuilder()
+        jsonBuilder.append("{\n")
+        jsonBuilder.append("  \"application\": \"LRgetBD Master Ledger Metadata Export\",\n")
+        jsonBuilder.append("  \"district\": \"${district.nameBn} (${district.nameEn})\",\n")
+        jsonBuilder.append("  \"upazila\": \"${upazila.nameBn} (${upazila.nameEn})\",\n")
+        jsonBuilder.append("  \"exportedAt\": ${System.currentTimeMillis()},\n")
+        jsonBuilder.append("  \"recordsCount\": ${ledgerEntries.size},\n")
+        jsonBuilder.append("  \"records\": [\n")
+        
+        ledgerEntries.forEachIndexed { idx, entry ->
+            jsonBuilder.append("    {\n")
+            jsonBuilder.append("      \"id\": ${entry.id},\n")
+            jsonBuilder.append("      \"division\": \"${entry.divisionName}\",\n")
+            jsonBuilder.append("      \"district\": \"${entry.districtName}\",\n")
+            jsonBuilder.append("      \"upazila\": \"${entry.upazilaName}\",\n")
+            jsonBuilder.append("      \"mouza\": \"${entry.mouzaName}\",\n")
+            jsonBuilder.append("      \"jlNumber\": \"${entry.jlNumber}\",\n")
+            jsonBuilder.append("      \"surveyType\": \"${entry.surveyType}\",\n")
+            jsonBuilder.append("      \"khatianNumber\": \"${entry.khatianNumber}\",\n")
+            jsonBuilder.append("      \"dagNumber\": \"${entry.dagNumber}\",\n")
+            jsonBuilder.append("      \"ownerName\": \"${entry.ownerName}\",\n")
+            jsonBuilder.append("      \"guardianName\": \"${entry.guardianName}\",\n")
+            jsonBuilder.append("      \"documentType\": \"${entry.documentType}\",\n")
+            jsonBuilder.append("      \"source\": \"${entry.sourceName}\",\n")
+            jsonBuilder.append("      \"verificationStatus\": \"${entry.verificationStatus.name}\",\n")
+            jsonBuilder.append("      \"sha256\": \"${entry.sha256Checksum}\",\n")
+            jsonBuilder.append("      \"recordedAt\": ${entry.recordedAt}\n")
+            jsonBuilder.append("    }${if (idx < ledgerEntries.size - 1) "," else ""}\n")
+        }
+        
+        jsonBuilder.append("  ]\n")
+        jsonBuilder.append("}\n")
+        
+        return saveFileToLandRecords(context, fileName, jsonBuilder.toString(), "application/json", subDir)
+    }
+
     private fun csvEscape(value: String?): String {
         if (value == null) return "\"\""
         val escaped = value.replace("\"", "\"\"")

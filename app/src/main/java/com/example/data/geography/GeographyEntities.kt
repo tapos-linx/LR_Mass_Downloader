@@ -11,8 +11,13 @@ import androidx.room.PrimaryKey
  */
 enum class GeoVerificationStatus(val labelEn: String, val labelBn: String) {
     VERIFIED("Verified Official Record", "যাচাইকৃত সরকারি রেকর্ড"),
+    CORROBORATED("Corroborated by Multiple Sources", "একাধিক সূত্রে যাচাইকৃত"),
+    PROBABLE("Probable / High Confidence", "সম্ভাব্য"),
+    POSSIBLE("Possible / Low Confidence", "সম্ভাব্য (কম নিশ্চিত)"),
     COMMUNITY_CONTRIBUTED("Community / Secondary Source", "তথ্যসূত্র সংযুক্ত (অযাচাইকৃত)"),
     UNVERIFIED("Unverified / Pending Audit", "অযাচাইকৃত"),
+    RECORD_GAP("Known Record Gap", "রেকর্ড গ্যাপ"),
+    CONTRADICTORY("Contradictory Records Found", "পরস্পরবিরোধী রেকর্ড"),
     MISSING_MOUZA_DATASET("Mouza Dataset Pending Import", "মৌজা ডেটাসেট সংযোজন বাকি")
 }
 
@@ -127,6 +132,8 @@ data class MouzaEntity(
     @ColumnInfo(name = "jl_number") val jlNumber: String,
     @ColumnInfo(name = "official_mouza_code") val officialMouzaCode: String,
     @ColumnInfo(name = "source_reference") val sourceReference: String,
+    @ColumnInfo(name = "source_version") val sourceVersion: String = "2024.11",
+    @ColumnInfo(name = "source_url") val sourceUrl: String = "",
     @ColumnInfo(name = "verification_status") val verificationStatus: GeoVerificationStatus,
     @ColumnInfo(name = "last_verified_at") val lastVerifiedAt: Long
 )

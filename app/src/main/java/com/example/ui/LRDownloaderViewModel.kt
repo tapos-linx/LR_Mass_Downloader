@@ -89,7 +89,7 @@ data class LRUiState(
         totalDivisions = 8,
         totalDistricts = 64,
         totalUpazilas = BangladeshGeographyCatalog.upazilas.size,
-        totalVerifiedMouzas = 2902
+        totalVerifiedMouzas = 0
     ),
     val isPaused: Boolean = false,
     val isAutoBatchMode: Boolean = true,
@@ -150,6 +150,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
     private val repository = DownloadRepository(db.savedRecordDao(), db.downloadQueueDao())
     val geographyRepository = GeographyRepository(db.geographyDao())
     private val masterLandLedgerDao = db.masterLandLedgerDao()
+    private val upazilaFetchInfoDao = db.upazilaFetchInfoDao()
 
     val savedRecords: StateFlow<List<SavedRecord>> = repository.savedRecords
         .stateIn(
@@ -269,7 +270,22 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             )
         }.launchIn(viewModelScope)
 
-        // 3. Persistent Queue Sync & Sequential Multi-Queue Coordinator
+        // 3. Persistent Queue State Recovery
+        upazilaFetchInfoDao.getLatestFetchInfo().onEach { info ->
+            if (info != null && _uiState.value.upazilaFetchInfo == null) {
+                _uiState.value = _uiState.value.copy(
+                    upazilaFetchInfo = info,
+                    selectedUpazilaId = info.upazilaId,
+                    selectedUpazilaIds = setOf(info.upazilaId),
+                    targetTotalMouzas = info.totalMouzaCount,
+                    selectedLandRecordsCount = info.totalLandRecordsCount,
+                    batchSize = info.mouzasPerQueue
+                )
+                refreshGeographyCoverageSummary()
+            }
+        }.launchIn(viewModelScope)
+
+        // 4. Persistent Queue Sync & Sequential Multi-Queue Coordinator
         viewModelScope.launch {
             repository.resetInterruptedTasks()
 
@@ -532,6 +548,10 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             batchSize = DEFAULT_MOUZAS_PER_BATCH,
             currentBatchNumber = 1
         )
+        viewModelScope.launch {
+            upazilaFetchInfoDao.clearFetchInfo()
+            upazilaFetchInfoDao.insertFetchInfo(fetchInfo)
+        }
         refreshGeographyCoverageSummary()
     }
 
@@ -617,6 +637,10 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             plannedQueues = planned,
             batchSize = DEFAULT_MOUZAS_PER_BATCH
         )
+        viewModelScope.launch {
+            upazilaFetchInfoDao.clearFetchInfo()
+            upazilaFetchInfoDao.insertFetchInfo(fetchInfo)
+        }
         refreshGeographyCoverageSummary()
     }
 
@@ -649,6 +673,9 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
                 cacheNotificationMessage = null
             )
             refreshGeographyCoverageSummary()
+            viewModelScope.launch {
+                upazilaFetchInfoDao.clearFetchInfo()
+            }
             return
         }
 
@@ -703,6 +730,11 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
                 cacheNotificationMessage = null
             )
 
+            viewModelScope.launch {
+                upazilaFetchInfoDao.clearFetchInfo()
+                upazilaFetchInfoDao.insertFetchInfo(fetchInfo)
+            }
+
             refreshGeographyCoverageSummary()
 
             if (autoStartQueues) {
@@ -727,7 +759,8 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
         queueSize: Int,
         activeTasks: List<DownloadTask>
     ): List<PlannedQueueSegment> {
-        val effectiveSize = queueSize.coerceAtLeast(1)
+        // Phase 2: Strictly enforce 7 mouzas per batch
+        val effectiveSize = DEFAULT_MOUZAS_PER_BATCH
 
         if (activeTasks.isNotEmpty()) {
             val grouped = activeTasks.groupBy { it.batchNumber }.toSortedMap()
@@ -1039,6 +1072,8 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
         queueSize: Int,
         startBatchNumber: Int = 1
     ) {
+        // Phase 2: Strictly enforce 7 mouzas per batch as per requirement
+        val effectiveQueueSize = DEFAULT_MOUZAS_PER_BATCH 
         val timestamp = System.currentTimeMillis()
         val state = _uiState.value
         val recordTypes = state.selectedRecordTypes.ifEmpty { RecordType.values().toSet() }
@@ -1059,7 +1094,7 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
         val upazilaLookup = district.upazilas.associateBy { it.id }
         val divisionNameBn = currentDivision?.nameBn ?: "চট্টগ্রাম"
 
-        val chunks = filteredMouzas.chunked(queueSize.coerceAtLeast(1))
+        val chunks = filteredMouzas.chunked(effectiveQueueSize)
         val newTasks = mutableListOf<DownloadTask>()
         var globalSortOrder = (state.queue.maxOfOrNull { it.sortOrder } ?: 0) + 1
 
@@ -1118,22 +1153,25 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             mouzasPool = currentMouzas,
             selectedMouzaIds = state.selectedMouzaIds,
             recordTypes = recordTypes,
-            queueSize = queueSize,
+            queueSize = effectiveQueueSize,
             activeTasks = updatedQueue
         )
 
         _uiState.value = state.copy(
             queue = updatedQueue,
-            batchSize = queueSize,
+            batchSize = effectiveQueueSize,
             currentBatchNumber = startBatchNumber,
             plannedQueues = updatedPlanned,
             isShowingPreQueueConfirmationDialog = false
         )
 
-        appendActivityLog("Generated ${newTasks.size} tasks across ${chunks.size} batches (${queueSize} Mouzas/batch)")
+        appendActivityLog("Generated ${newTasks.size} tasks across ${chunks.size} batches (${effectiveQueueSize} Mouzas/batch)")
 
         viewModelScope.launch {
             repository.insertTasksToQueue(newTasks)
+            state.upazilaFetchInfo?.let { 
+                upazilaFetchInfoDao.insertFetchInfo(it.copy(mouzasPerQueue = effectiveQueueSize)) 
+            }
             if (!_uiState.value.isPaused && retrievalMode == RetrievalMode.MODE_A_AUTHORIZED_API) {
                 startSequentialQueueCoordinator()
                 if (_uiState.value.useWorkManagerBackgroundService) {
@@ -1235,145 +1273,36 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             it.copy(status = TaskStatus.DOWNLOADING, progress = 10, speedKbps = 380)
         }
 
-        val totalSteps = 10
-        for (step in 1..totalSteps) {
-            while (_uiState.value.isPaused) {
-                delay(250)
-            }
+        // Section 1: Eliminate simulated downloads. No artificial delays or fake progress bars.
+        // A task can only become COMPLETED if an actual document is received and validated.
 
-            val current = repository.getTaskById(taskId) ?: return
-            if (current.status == TaskStatus.CANCELLED || current.status == TaskStatus.PAUSED) return
-
-            var retryAttempt = 0
-            val maxRetries = 3
-            var stepCompleted = false
-            while (retryAttempt <= maxRetries && !stepCompleted) {
-                try {
-                    if (retryAttempt == 0 && Random.nextInt(100) < 3) {
-                        throw java.io.IOException("Intermittent connection glitch")
-                    }
-                    delay(baseStepDelayMs + Random.nextLong(20, 60))
-                    stepCompleted = true
-                } catch (e: Exception) {
-                    retryAttempt++
-                    if (retryAttempt > maxRetries) {
-                        stepCompleted = true
-                    } else {
-                        val backoffDelay = (Math.pow(2.0, retryAttempt.toDouble()) * 120L).toLong()
-                        delay(backoffDelay)
-                    }
+        when (initialTask.retrievalMode) {
+            RetrievalMode.MODE_A_AUTHORIZED_API -> {
+                // Mode A requires an official, permitted access method (Adapter).
+                // Since no authorized adapter is configured in this Phase, we fail safely.
+                updateTaskSync(taskId) {
+                    it.copy(
+                        status = TaskStatus.FAILED,
+                        progress = 0,
+                        errorDetails = "Authorized Automated Retrieval (Mode A) is currently unavailable. No official API adapter configured."
+                    )
                 }
+                return
             }
-
-            val progress = (step * 10).coerceAtMost(100)
-            val speed = 360 + Random.nextInt(320)
-
-            updateTaskSync(taskId) { t ->
-                val downloaded = (progress * t.totalKhatians) / 100
-                t.copy(
-                    progress = progress,
-                    downloadedKhatians = downloaded,
-                    speedKbps = if (progress >= 100) 0 else speed,
-                    status = if (progress >= 100) TaskStatus.VERIFYING else TaskStatus.DOWNLOADING
-                )
-            }
-        }
-
-        val verifyingTask = repository.getTaskById(taskId) ?: return
-        val currentDist = currentDistrict
-        val currentUpaz = currentUpazila
-        var savedFilePath = ""
-        var verifiedSha256 = ""
-        var actualSizeBytes = 0L
-
-        if (currentDist != null && currentUpaz != null) {
-            try {
-                val saveRes = LandRecordStorageManager.saveMouzaRecordFile(
-                    getApplication(),
-                    verifyingTask,
-                    currentDist,
-                    currentUpaz
-                )
-                savedFilePath = saveRes.primaryDisplayPath
-                verifiedSha256 = saveRes.sha256Checksum
-                actualSizeBytes = saveRes.fileSizeBytes
-            } catch (e: Exception) {
-                e.printStackTrace()
+            RetrievalMode.MODE_B_USER_ASSISTED -> {
+                // Mode B: User-assisted workflow.
+                // Transition task to AWAITING_USER_IMPORT. The UI will prompt the user to import the PDF.
+                updateTaskSync(taskId) {
+                    it.copy(
+                        status = TaskStatus.AWAITING_USER_IMPORT,
+                        progress = 10,
+                        speedKbps = 0
+                    )
+                }
+                return
             }
         }
 
-        val completedAt = System.currentTimeMillis()
-        updateTaskSync(taskId) { t ->
-            t.copy(
-                status = TaskStatus.COMPLETED,
-                progress = 100,
-                speedKbps = 0,
-                fileLocation = savedFilePath,
-                fileSizeBytes = actualSizeBytes,
-                sha256Checksum = verifiedSha256,
-                completedTimestamp = completedAt
-            )
-        }
-
-        val finished = repository.getTaskById(taskId)
-        if (finished != null && finished.status == TaskStatus.COMPLETED) {
-            _uiState.value = _uiState.value.copy(
-                downloadedMouzaIds = _uiState.value.downloadedMouzaIds + finished.mouzaId
-            )
-
-            val sizeFormatted = if (actualSizeBytes >= 1024) {
-                String.format("%.1f KB", actualSizeBytes / 1024.0)
-            } else {
-                "$actualSizeBytes B"
-            }
-
-            repository.insertSavedRecord(
-                SavedRecord(
-                    id = finished.id,
-                    mouzaId = finished.mouzaId,
-                    mouzaNameBn = finished.mouzaNameBn,
-                    mouzaNameEn = finished.mouzaNameEn,
-                    jlNo = finished.jlNo,
-                    upazilaNameBn = finished.upazilaNameBn,
-                    districtNameBn = finished.districtNameBn,
-                    recordType = finished.recordTypeLabel,
-                    khatianCount = finished.totalKhatians,
-                    fileSizeFormatted = sizeFormatted,
-                    divisionNameBn = finished.divisionNameBn,
-                    fileLocation = savedFilePath,
-                    sha256Checksum = verifiedSha256,
-                    sourceName = finished.sourceName,
-                    verificationStatus = DocumentVerificationStatus.CHECKSUM_VERIFIED.name
-                )
-            )
-
-            masterLandLedgerDao.insertEntry(
-                MasterLedgerEntryEntity(
-                    divisionId = finished.divisionId,
-                    divisionName = finished.divisionNameBn,
-                    districtId = finished.districtId,
-                    districtName = finished.districtNameBn,
-                    upazilaId = finished.upazilaId,
-                    upazilaName = finished.upazilaNameBn,
-                    mouzaId = finished.mouzaId,
-                    mouzaName = "${finished.mouzaNameBn} (${finished.mouzaNameEn})",
-                    jlNumber = finished.jlNo,
-                    surveyType = finished.recordTypeLabel,
-                    khatianNumber = finished.referenceId ?: "Mouza-Index",
-                    dagNumber = "",
-                    ownerName = "",
-                    guardianName = "",
-                    documentType = finished.recordCategory,
-                    sourceName = finished.sourceName,
-                    retrievalMethod = finished.retrievalMode.name,
-                    verificationStatus = DocumentVerificationStatus.CHECKSUM_VERIFIED,
-                    fileReference = savedFilePath,
-                    fileSizeBytes = actualSizeBytes,
-                    sha256Checksum = verifiedSha256,
-                    recordedAt = completedAt
-                )
-            )
-        }
     }
 
     /**
@@ -1390,6 +1319,119 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             appendActivityLog("Opened user-assisted browser for ${task?.mouzaNameEn ?: "Land Portal"}")
         } catch (e: Exception) {
             Toast.makeText(context, "Open browser: $url", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * Imports and validates a genuine PDF document specifically for an active DownloadTask.
+     * Marks the task as COMPLETED upon successful validation and persistence.
+     */
+    fun importPdfForTask(
+        context: Context,
+        taskId: String,
+        pdfBytes: ByteArray,
+        fileName: String
+    ) {
+        viewModelScope.launch {
+            val task = repository.getTaskById(taskId) ?: return@launch
+            val validation = DocumentVerificationEngine.verifyDocumentBytes(
+                bytes = pdfBytes,
+                declaredMimeType = "application/pdf",
+                fileName = fileName
+            )
+
+            if (!validation.isValid) {
+                val errMsg = "PDF Validation Failed: ${validation.errorReason}"
+                _uiState.value = _uiState.value.copy(lastImportStatusMessage = errMsg)
+                appendActivityLog(errMsg)
+                updateTaskSync(taskId) { it.copy(errorDetails = errMsg) }
+                return@launch
+            }
+
+            val district = allDistricts.find { it.nameBn == task.districtNameBn || it.nameEn == task.districtNameBn }
+                ?: allDistricts.first { it.id == task.districtId }
+            val upazila = district.upazilas.find { it.nameBn == task.upazilaNameBn || it.nameEn == task.upazilaNameBn }
+                ?: district.upazilas.first { it.id == task.upazilaId }
+
+            val savedResult = LandRecordStorageManager.importAndVerifyUserPdf(
+                context = context,
+                pdfBytes = pdfBytes,
+                originalFileName = fileName,
+                divisionNameEn = task.divisionId,
+                districtNameEn = district.nameEn,
+                upazilaNameEn = upazila.nameEn,
+                mouzaNameEn = task.mouzaNameEn,
+                jlNo = task.jlNo,
+                surveyType = task.surveyType
+            )
+
+            val completedAt = System.currentTimeMillis()
+            updateTaskSync(taskId) { t ->
+                t.copy(
+                    status = TaskStatus.COMPLETED,
+                    progress = 100,
+                    fileLocation = savedResult.primaryDisplayPath,
+                    fileSizeBytes = savedResult.fileSizeBytes,
+                    sha256Checksum = savedResult.sha256Checksum,
+                    completedTimestamp = completedAt
+                )
+            }
+
+            _uiState.value = _uiState.value.copy(
+                downloadedMouzaIds = _uiState.value.downloadedMouzaIds + task.mouzaId,
+                lastImportStatusMessage = "Successfully imported $fileName for ${task.mouzaNameBn}"
+            )
+
+            val sizeFormatted = String.format("%.1f KB", savedResult.fileSizeBytes / 1024.0)
+
+            repository.insertSavedRecord(
+                SavedRecord(
+                    id = task.id,
+                    mouzaId = task.mouzaId,
+                    mouzaNameBn = task.mouzaNameBn,
+                    mouzaNameEn = task.mouzaNameEn,
+                    jlNo = task.jlNo,
+                    upazilaNameBn = task.upazilaNameBn,
+                    districtNameBn = task.districtNameBn,
+                    recordType = task.recordTypeLabel,
+                    khatianCount = task.totalKhatians,
+                    fileSizeFormatted = sizeFormatted,
+                    divisionNameBn = task.divisionNameBn,
+                    fileLocation = savedResult.primaryDisplayPath,
+                    sha256Checksum = savedResult.sha256Checksum,
+                    sourceName = "User Imported PDF ($fileName)",
+                    verificationStatus = DocumentVerificationStatus.CHECKSUM_VERIFIED.name
+                )
+            )
+
+            masterLandLedgerDao.insertEntry(
+                MasterLedgerEntryEntity(
+                    divisionId = task.divisionId,
+                    divisionName = task.divisionNameBn,
+                    districtId = task.districtId,
+                    districtName = task.districtNameBn,
+                    upazilaId = task.upazilaId,
+                    upazilaName = task.upazilaNameBn,
+                    mouzaId = task.mouzaId,
+                    mouzaName = "${task.mouzaNameBn} (${task.mouzaNameEn})",
+                    jlNumber = task.jlNo,
+                    surveyType = task.recordTypeLabel,
+                    khatianNumber = task.referenceId ?: "User-Imported",
+                    dagNumber = "",
+                    ownerName = "",
+                    guardianName = "",
+                    documentType = "USER_IMPORTED_PDF",
+                    sourceName = "User Imported PDF ($fileName)",
+                    retrievalMethod = RetrievalMode.MODE_B_USER_ASSISTED.name,
+                    verificationStatus = DocumentVerificationStatus.USER_IMPORTED_PDF,
+                    fileReference = savedResult.primaryDisplayPath,
+                    fileSizeBytes = savedResult.fileSizeBytes,
+                    sha256Checksum = savedResult.sha256Checksum,
+                    recordedAt = completedAt
+                )
+            )
+
+            appendActivityLog("Manually fulfilled task ${task.id} via PDF import")
         }
     }
 
@@ -1762,6 +1804,33 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             )
 
             val msg = "Metadata CSV exported to: ${result.primaryDisplayPath}"
+            _uiState.value = _uiState.value.copy(cacheNotificationMessage = msg)
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * Dedicated trigger for JSON Metadata Export.
+     */
+    fun exportMasterLedgerJsonOnly(context: Context) {
+        val upazila = currentUpazila ?: return
+        val district = currentDistrict ?: return
+
+        viewModelScope.launch {
+            val ledgerRows = masterLandLedgerDao.getAllEntriesDirect()
+            if (ledgerRows.isEmpty() && _uiState.value.queue.none { it.status == TaskStatus.COMPLETED }) {
+                Toast.makeText(context, "No metadata available to export yet.", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val result = LandRecordStorageManager.exportMetadataJson(
+                context = context,
+                district = district,
+                upazila = upazila,
+                ledgerEntries = ledgerRows
+            )
+
+            val msg = "Metadata JSON exported to: ${result.primaryDisplayPath}"
             _uiState.value = _uiState.value.copy(cacheNotificationMessage = msg)
             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
         }

@@ -1,0 +1,1420 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "0acf86f8e931d4132cd0a55a88999e1b",
+    "entities": [
+      {
+        "tableName": "saved_land_records",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `mouzaId` TEXT NOT NULL, `mouzaNameBn` TEXT NOT NULL, `mouzaNameEn` TEXT NOT NULL, `jlNo` TEXT NOT NULL, `upazilaNameBn` TEXT NOT NULL, `districtNameBn` TEXT NOT NULL, `recordType` TEXT NOT NULL, `khatianCount` INTEGER NOT NULL, `fileSizeFormatted` TEXT NOT NULL, `downloadedAt` INTEGER NOT NULL, `divisionNameBn` TEXT NOT NULL, `fileLocation` TEXT NOT NULL, `sha256Checksum` TEXT NOT NULL, `sourceName` TEXT NOT NULL, `verificationStatus` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaId",
+            "columnName": "mouzaId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaNameBn",
+            "columnName": "mouzaNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaNameEn",
+            "columnName": "mouzaNameEn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jlNo",
+            "columnName": "jlNo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upazilaNameBn",
+            "columnName": "upazilaNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "districtNameBn",
+            "columnName": "districtNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordType",
+            "columnName": "recordType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "khatianCount",
+            "columnName": "khatianCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileSizeFormatted",
+            "columnName": "fileSizeFormatted",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downloadedAt",
+            "columnName": "downloadedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "divisionNameBn",
+            "columnName": "divisionNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileLocation",
+            "columnName": "fileLocation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sha256Checksum",
+            "columnName": "sha256Checksum",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceName",
+            "columnName": "sourceName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verificationStatus",
+            "columnName": "verificationStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "download_queue",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `mouzaId` TEXT NOT NULL, `mouzaNameBn` TEXT NOT NULL, `mouzaNameEn` TEXT NOT NULL, `jlNo` TEXT NOT NULL, `upazilaNameBn` TEXT NOT NULL, `districtNameBn` TEXT NOT NULL, `recordTypes` TEXT NOT NULL, `downloadFormat` TEXT NOT NULL, `status` TEXT NOT NULL, `progress` INTEGER NOT NULL, `totalKhatians` INTEGER NOT NULL, `downloadedKhatians` INTEGER NOT NULL, `fileSizeBytes` INTEGER NOT NULL, `speedKbps` INTEGER NOT NULL, `batchNumber` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `referenceId` TEXT, `divisionId` TEXT NOT NULL, `divisionNameBn` TEXT NOT NULL, `districtId` TEXT NOT NULL, `upazilaId` TEXT NOT NULL, `surveyType` TEXT NOT NULL, `recordCategory` TEXT NOT NULL, `retrievalMode` TEXT NOT NULL, `sourceName` TEXT NOT NULL, `sourceReference` TEXT NOT NULL, `fileLocation` TEXT NOT NULL, `sha256Checksum` TEXT NOT NULL, `errorDetails` TEXT, `completedTimestamp` INTEGER, `sortOrder` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaId",
+            "columnName": "mouzaId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaNameBn",
+            "columnName": "mouzaNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaNameEn",
+            "columnName": "mouzaNameEn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jlNo",
+            "columnName": "jlNo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upazilaNameBn",
+            "columnName": "upazilaNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "districtNameBn",
+            "columnName": "districtNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordTypes",
+            "columnName": "recordTypes",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downloadFormat",
+            "columnName": "downloadFormat",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "progress",
+            "columnName": "progress",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalKhatians",
+            "columnName": "totalKhatians",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downloadedKhatians",
+            "columnName": "downloadedKhatians",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileSizeBytes",
+            "columnName": "fileSizeBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "speedKbps",
+            "columnName": "speedKbps",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batchNumber",
+            "columnName": "batchNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "referenceId",
+            "columnName": "referenceId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "divisionId",
+            "columnName": "divisionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "divisionNameBn",
+            "columnName": "divisionNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "districtId",
+            "columnName": "districtId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upazilaId",
+            "columnName": "upazilaId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "surveyType",
+            "columnName": "surveyType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordCategory",
+            "columnName": "recordCategory",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retrievalMode",
+            "columnName": "retrievalMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceName",
+            "columnName": "sourceName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceReference",
+            "columnName": "sourceReference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileLocation",
+            "columnName": "fileLocation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sha256Checksum",
+            "columnName": "sha256Checksum",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errorDetails",
+            "columnName": "errorDetails",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "completedTimestamp",
+            "columnName": "completedTimestamp",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_download_queue_divisionId",
+            "unique": false,
+            "columnNames": [
+              "divisionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_download_queue_divisionId` ON `${TABLE_NAME}` (`divisionId`)"
+          },
+          {
+            "name": "index_download_queue_districtId",
+            "unique": false,
+            "columnNames": [
+              "districtId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_download_queue_districtId` ON `${TABLE_NAME}` (`districtId`)"
+          },
+          {
+            "name": "index_download_queue_upazilaId",
+            "unique": false,
+            "columnNames": [
+              "upazilaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_download_queue_upazilaId` ON `${TABLE_NAME}` (`upazilaId`)"
+          },
+          {
+            "name": "index_download_queue_mouzaId",
+            "unique": false,
+            "columnNames": [
+              "mouzaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_download_queue_mouzaId` ON `${TABLE_NAME}` (`mouzaId`)"
+          },
+          {
+            "name": "index_download_queue_jlNo",
+            "unique": false,
+            "columnNames": [
+              "jlNo"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_download_queue_jlNo` ON `${TABLE_NAME}` (`jlNo`)"
+          },
+          {
+            "name": "index_download_queue_surveyType",
+            "unique": false,
+            "columnNames": [
+              "surveyType"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_download_queue_surveyType` ON `${TABLE_NAME}` (`surveyType`)"
+          },
+          {
+            "name": "index_download_queue_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_download_queue_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_download_queue_batchNumber_sortOrder",
+            "unique": false,
+            "columnNames": [
+              "batchNumber",
+              "sortOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_download_queue_batchNumber_sortOrder` ON `${TABLE_NAME}` (`batchNumber`, `sortOrder`)"
+          }
+        ]
+      },
+      {
+        "tableName": "khatian_records",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `district` TEXT NOT NULL, `upazila` TEXT NOT NULL, `mouza` TEXT NOT NULL, `khatianNumber` TEXT NOT NULL, `recordType` TEXT NOT NULL, `downloadStatus` TEXT NOT NULL, `timestamp` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "district",
+            "columnName": "district",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upazila",
+            "columnName": "upazila",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouza",
+            "columnName": "mouza",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "khatianNumber",
+            "columnName": "khatianNumber",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordType",
+            "columnName": "recordType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downloadStatus",
+            "columnName": "downloadStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "divisions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name_en` TEXT NOT NULL, `name_bn` TEXT NOT NULL, `official_code` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameEn",
+            "columnName": "name_en",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameBn",
+            "columnName": "name_bn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "officialCode",
+            "columnName": "official_code",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_divisions_official_code",
+            "unique": true,
+            "columnNames": [
+              "official_code"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_divisions_official_code` ON `${TABLE_NAME}` (`official_code`)"
+          },
+          {
+            "name": "index_divisions_name_en",
+            "unique": false,
+            "columnNames": [
+              "name_en"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_divisions_name_en` ON `${TABLE_NAME}` (`name_en`)"
+          }
+        ]
+      },
+      {
+        "tableName": "districts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `division_id` TEXT NOT NULL, `name_en` TEXT NOT NULL, `name_bn` TEXT NOT NULL, `official_code` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "divisionId",
+            "columnName": "division_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameEn",
+            "columnName": "name_en",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameBn",
+            "columnName": "name_bn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "officialCode",
+            "columnName": "official_code",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_districts_division_id",
+            "unique": false,
+            "columnNames": [
+              "division_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_districts_division_id` ON `${TABLE_NAME}` (`division_id`)"
+          },
+          {
+            "name": "index_districts_official_code",
+            "unique": true,
+            "columnNames": [
+              "official_code"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_districts_official_code` ON `${TABLE_NAME}` (`official_code`)"
+          },
+          {
+            "name": "index_districts_name_en",
+            "unique": false,
+            "columnNames": [
+              "name_en"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_districts_name_en` ON `${TABLE_NAME}` (`name_en`)"
+          }
+        ]
+      },
+      {
+        "tableName": "upazilas",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `district_id` TEXT NOT NULL, `name_en` TEXT NOT NULL, `name_bn` TEXT NOT NULL, `official_code` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "districtId",
+            "columnName": "district_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameEn",
+            "columnName": "name_en",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameBn",
+            "columnName": "name_bn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "officialCode",
+            "columnName": "official_code",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_upazilas_district_id",
+            "unique": false,
+            "columnNames": [
+              "district_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_upazilas_district_id` ON `${TABLE_NAME}` (`district_id`)"
+          },
+          {
+            "name": "index_upazilas_official_code",
+            "unique": false,
+            "columnNames": [
+              "official_code"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_upazilas_official_code` ON `${TABLE_NAME}` (`official_code`)"
+          },
+          {
+            "name": "index_upazilas_name_en",
+            "unique": false,
+            "columnNames": [
+              "name_en"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_upazilas_name_en` ON `${TABLE_NAME}` (`name_en`)"
+          }
+        ]
+      },
+      {
+        "tableName": "mouzas",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `upazila_id` TEXT NOT NULL, `name_en` TEXT NOT NULL, `name_bn` TEXT NOT NULL, `jl_number` TEXT NOT NULL, `official_mouza_code` TEXT NOT NULL, `source_reference` TEXT NOT NULL, `source_version` TEXT NOT NULL, `source_url` TEXT NOT NULL, `verification_status` TEXT NOT NULL, `last_verified_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upazilaId",
+            "columnName": "upazila_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameEn",
+            "columnName": "name_en",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameBn",
+            "columnName": "name_bn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jlNumber",
+            "columnName": "jl_number",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "officialMouzaCode",
+            "columnName": "official_mouza_code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceReference",
+            "columnName": "source_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceVersion",
+            "columnName": "source_version",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceUrl",
+            "columnName": "source_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verificationStatus",
+            "columnName": "verification_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastVerifiedAt",
+            "columnName": "last_verified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_mouzas_upazila_id",
+            "unique": false,
+            "columnNames": [
+              "upazila_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouzas_upazila_id` ON `${TABLE_NAME}` (`upazila_id`)"
+          },
+          {
+            "name": "index_mouzas_jl_number",
+            "unique": false,
+            "columnNames": [
+              "jl_number"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouzas_jl_number` ON `${TABLE_NAME}` (`jl_number`)"
+          },
+          {
+            "name": "index_mouzas_upazila_id_jl_number_name_en",
+            "unique": true,
+            "columnNames": [
+              "upazila_id",
+              "jl_number",
+              "name_en"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_mouzas_upazila_id_jl_number_name_en` ON `${TABLE_NAME}` (`upazila_id`, `jl_number`, `name_en`)"
+          },
+          {
+            "name": "index_mouzas_verification_status",
+            "unique": false,
+            "columnNames": [
+              "verification_status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouzas_verification_status` ON `${TABLE_NAME}` (`verification_status`)"
+          }
+        ]
+      },
+      {
+        "tableName": "mouza_aliases",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `mouza_id` TEXT NOT NULL, `alias_name` TEXT NOT NULL, `language` TEXT NOT NULL, `source_reference` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaId",
+            "columnName": "mouza_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aliasName",
+            "columnName": "alias_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "language",
+            "columnName": "language",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceReference",
+            "columnName": "source_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_mouza_aliases_mouza_id",
+            "unique": false,
+            "columnNames": [
+              "mouza_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouza_aliases_mouza_id` ON `${TABLE_NAME}` (`mouza_id`)"
+          },
+          {
+            "name": "index_mouza_aliases_alias_name",
+            "unique": false,
+            "columnNames": [
+              "alias_name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouza_aliases_alias_name` ON `${TABLE_NAME}` (`alias_name`)"
+          }
+        ]
+      },
+      {
+        "tableName": "mouza_jl_numbers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `mouza_id` TEXT NOT NULL, `survey_type` TEXT NOT NULL, `jl_number` TEXT NOT NULL, `source_reference` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaId",
+            "columnName": "mouza_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "surveyType",
+            "columnName": "survey_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jlNumber",
+            "columnName": "jl_number",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceReference",
+            "columnName": "source_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_mouza_jl_numbers_mouza_id",
+            "unique": false,
+            "columnNames": [
+              "mouza_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouza_jl_numbers_mouza_id` ON `${TABLE_NAME}` (`mouza_id`)"
+          },
+          {
+            "name": "index_mouza_jl_numbers_jl_number",
+            "unique": false,
+            "columnNames": [
+              "jl_number"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouza_jl_numbers_jl_number` ON `${TABLE_NAME}` (`jl_number`)"
+          },
+          {
+            "name": "index_mouza_jl_numbers_mouza_id_survey_type",
+            "unique": true,
+            "columnNames": [
+              "mouza_id",
+              "survey_type"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_mouza_jl_numbers_mouza_id_survey_type` ON `${TABLE_NAME}` (`mouza_id`, `survey_type`)"
+          }
+        ]
+      },
+      {
+        "tableName": "mouza_survey_availability",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`mouza_id` TEXT NOT NULL, `survey_type` TEXT NOT NULL, `availability_status` TEXT NOT NULL, `source_reference` TEXT NOT NULL, `last_checked_at` INTEGER NOT NULL, PRIMARY KEY(`mouza_id`, `survey_type`))",
+        "fields": [
+          {
+            "fieldPath": "mouzaId",
+            "columnName": "mouza_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "surveyType",
+            "columnName": "survey_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "availabilityStatus",
+            "columnName": "availability_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceReference",
+            "columnName": "source_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastCheckedAt",
+            "columnName": "last_checked_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "mouza_id",
+            "survey_type"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_mouza_survey_availability_mouza_id",
+            "unique": false,
+            "columnNames": [
+              "mouza_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouza_survey_availability_mouza_id` ON `${TABLE_NAME}` (`mouza_id`)"
+          },
+          {
+            "name": "index_mouza_survey_availability_survey_type",
+            "unique": false,
+            "columnNames": [
+              "survey_type"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouza_survey_availability_survey_type` ON `${TABLE_NAME}` (`survey_type`)"
+          },
+          {
+            "name": "index_mouza_survey_availability_availability_status",
+            "unique": false,
+            "columnNames": [
+              "availability_status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_mouza_survey_availability_availability_status` ON `${TABLE_NAME}` (`availability_status`)"
+          }
+        ]
+      },
+      {
+        "tableName": "geography_data_sources",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `source_name` TEXT NOT NULL, `source_url` TEXT NOT NULL, `dataset_version` TEXT NOT NULL, `verification_status` TEXT NOT NULL, `record_count` INTEGER NOT NULL, `imported_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceName",
+            "columnName": "source_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceUrl",
+            "columnName": "source_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "datasetVersion",
+            "columnName": "dataset_version",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verificationStatus",
+            "columnName": "verification_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordCount",
+            "columnName": "record_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importedAt",
+            "columnName": "imported_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_geography_data_sources_source_name",
+            "unique": true,
+            "columnNames": [
+              "source_name"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_geography_data_sources_source_name` ON `${TABLE_NAME}` (`source_name`)"
+          }
+        ]
+      },
+      {
+        "tableName": "geography_import_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `source_name` TEXT NOT NULL, `source_url` TEXT NOT NULL, `import_date` INTEGER NOT NULL, `dataset_version` TEXT NOT NULL, `verification_status` TEXT NOT NULL, `record_count` INTEGER NOT NULL, `import_errors` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceName",
+            "columnName": "source_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceUrl",
+            "columnName": "source_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importDate",
+            "columnName": "import_date",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "datasetVersion",
+            "columnName": "dataset_version",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verificationStatus",
+            "columnName": "verification_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordCount",
+            "columnName": "record_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importErrors",
+            "columnName": "import_errors",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_geography_import_history_import_date",
+            "unique": false,
+            "columnNames": [
+              "import_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_geography_import_history_import_date` ON `${TABLE_NAME}` (`import_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "master_land_ledger",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `division_id` TEXT NOT NULL, `division_name` TEXT NOT NULL, `district_id` TEXT NOT NULL, `district_name` TEXT NOT NULL, `upazila_id` TEXT NOT NULL, `upazila_name` TEXT NOT NULL, `mouza_id` TEXT NOT NULL, `mouza_name` TEXT NOT NULL, `jl_number` TEXT NOT NULL, `survey_type` TEXT NOT NULL, `khatian_number` TEXT NOT NULL, `dag_number` TEXT NOT NULL, `owner_name` TEXT NOT NULL, `guardian_name` TEXT NOT NULL, `document_type` TEXT NOT NULL, `source_name` TEXT NOT NULL, `retrieval_method` TEXT NOT NULL, `verification_status` TEXT NOT NULL, `file_reference` TEXT NOT NULL, `file_size_bytes` INTEGER NOT NULL, `sha256_checksum` TEXT NOT NULL, `original_ocr_text` TEXT NOT NULL, `user_corrected_notes` TEXT NOT NULL, `recorded_at` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "divisionId",
+            "columnName": "division_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "divisionName",
+            "columnName": "division_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "districtId",
+            "columnName": "district_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "districtName",
+            "columnName": "district_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upazilaId",
+            "columnName": "upazila_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upazilaName",
+            "columnName": "upazila_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaId",
+            "columnName": "mouza_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzaName",
+            "columnName": "mouza_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jlNumber",
+            "columnName": "jl_number",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "surveyType",
+            "columnName": "survey_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "khatianNumber",
+            "columnName": "khatian_number",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dagNumber",
+            "columnName": "dag_number",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerName",
+            "columnName": "owner_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "guardianName",
+            "columnName": "guardian_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentType",
+            "columnName": "document_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceName",
+            "columnName": "source_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retrievalMethod",
+            "columnName": "retrieval_method",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verificationStatus",
+            "columnName": "verification_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileReference",
+            "columnName": "file_reference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileSizeBytes",
+            "columnName": "file_size_bytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sha256Checksum",
+            "columnName": "sha256_checksum",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalOcrText",
+            "columnName": "original_ocr_text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userCorrectedNotes",
+            "columnName": "user_corrected_notes",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordedAt",
+            "columnName": "recorded_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_master_land_ledger_division_id",
+            "unique": false,
+            "columnNames": [
+              "division_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_master_land_ledger_division_id` ON `${TABLE_NAME}` (`division_id`)"
+          },
+          {
+            "name": "index_master_land_ledger_district_id",
+            "unique": false,
+            "columnNames": [
+              "district_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_master_land_ledger_district_id` ON `${TABLE_NAME}` (`district_id`)"
+          },
+          {
+            "name": "index_master_land_ledger_upazila_id",
+            "unique": false,
+            "columnNames": [
+              "upazila_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_master_land_ledger_upazila_id` ON `${TABLE_NAME}` (`upazila_id`)"
+          },
+          {
+            "name": "index_master_land_ledger_mouza_id",
+            "unique": false,
+            "columnNames": [
+              "mouza_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_master_land_ledger_mouza_id` ON `${TABLE_NAME}` (`mouza_id`)"
+          },
+          {
+            "name": "index_master_land_ledger_jl_number",
+            "unique": false,
+            "columnNames": [
+              "jl_number"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_master_land_ledger_jl_number` ON `${TABLE_NAME}` (`jl_number`)"
+          },
+          {
+            "name": "index_master_land_ledger_survey_type",
+            "unique": false,
+            "columnNames": [
+              "survey_type"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_master_land_ledger_survey_type` ON `${TABLE_NAME}` (`survey_type`)"
+          },
+          {
+            "name": "index_master_land_ledger_sha256_checksum",
+            "unique": false,
+            "columnNames": [
+              "sha256_checksum"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_master_land_ledger_sha256_checksum` ON `${TABLE_NAME}` (`sha256_checksum`)"
+          }
+        ]
+      },
+      {
+        "tableName": "upazila_fetch_info",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`upazilaId` TEXT NOT NULL, `upazilaNameBn` TEXT NOT NULL, `upazilaNameEn` TEXT NOT NULL, `districtNameBn` TEXT NOT NULL, `totalMouzaCount` INTEGER NOT NULL, `batchCount` INTEGER NOT NULL, `message` TEXT NOT NULL, `totalLandRecordsCount` INTEGER NOT NULL, `mouzasPerQueue` INTEGER NOT NULL, `networkProfileLabel` TEXT NOT NULL, `deviceProfileLabel` TEXT NOT NULL, PRIMARY KEY(`upazilaId`))",
+        "fields": [
+          {
+            "fieldPath": "upazilaId",
+            "columnName": "upazilaId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upazilaNameBn",
+            "columnName": "upazilaNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upazilaNameEn",
+            "columnName": "upazilaNameEn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "districtNameBn",
+            "columnName": "districtNameBn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalMouzaCount",
+            "columnName": "totalMouzaCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batchCount",
+            "columnName": "batchCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalLandRecordsCount",
+            "columnName": "totalLandRecordsCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mouzasPerQueue",
+            "columnName": "mouzasPerQueue",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "networkProfileLabel",
+            "columnName": "networkProfileLabel",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceProfileLabel",
+            "columnName": "deviceProfileLabel",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "upazilaId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0acf86f8e931d4132cd0a55a88999e1b')"
+    ]
+  }
+}

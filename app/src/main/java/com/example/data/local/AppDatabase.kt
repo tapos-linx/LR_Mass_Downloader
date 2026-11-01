@@ -9,6 +9,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.geography.DistrictEntity
 import com.example.data.geography.DivisionEntity
 import com.example.data.geography.GeographyDao
@@ -47,6 +49,7 @@ interface SavedRecordDao {
     suspend fun clearAllRecords()
 }
 
+
 @Database(
     entities = [
         SavedRecord::class,
@@ -61,10 +64,11 @@ interface SavedRecordDao {
         MouzaSurveyAvailabilityEntity::class,
         GeographyDataSourceEntity::class,
         GeographyImportHistoryEntity::class,
-        MasterLedgerEntryEntity::class
+        MasterLedgerEntryEntity::class,
+        com.example.data.model.UpazilaFetchInfo::class
     ],
-    version = 6,
-    exportSchema = false
+    version = 7,
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -73,10 +77,33 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun khatianRecordDao(): KhatianRecordDao
     abstract fun geographyDao(): GeographyDao
     abstract fun masterLandLedgerDao(): MasterLandLedgerDao
+    abstract fun upazilaFetchInfoDao(): UpazilaFetchInfoDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Phase 2: Add upazila_fetch_info table for persistent queue state recovery
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `upazila_fetch_info` (
+                        `upazilaId` TEXT NOT NULL, 
+                        `upazilaNameBn` TEXT NOT NULL, 
+                        `upazilaNameEn` TEXT NOT NULL, 
+                        `districtNameBn` TEXT NOT NULL, 
+                        `totalMouzaCount` INTEGER NOT NULL, 
+                        `batchCount` INTEGER NOT NULL, 
+                        `message` TEXT NOT NULL, 
+                        `totalLandRecordsCount` INTEGER NOT NULL, 
+                        `mouzasPerQueue` INTEGER NOT NULL, 
+                        `networkProfileLabel` TEXT NOT NULL, 
+                        `deviceProfileLabel` TEXT NOT NULL, 
+                        PRIMARY KEY(`upazilaId`)
+                    )
+                """.trimIndent())
+            }
+        }
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -85,11 +112,20 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "lr_mass_downloader.db"
                 )
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_6_7)
                     .build()
                 INSTANCE = instance
                 instance
             }
+        }
+
+        fun getTestDatabase(context: Context): AppDatabase {
+            return Room.inMemoryDatabaseBuilder(
+                context.applicationContext,
+                AppDatabase::class.java
+            )
+                .allowMainThreadQueries()
+                .build()
         }
     }
 }

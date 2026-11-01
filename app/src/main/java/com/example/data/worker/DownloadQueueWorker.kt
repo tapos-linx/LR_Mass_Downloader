@@ -104,7 +104,7 @@ class DownloadQueueWorker(
                             val remainingMouzas = upazila.mouzas.filter { it.id !in existingMouzaIds }
 
                             if (remainingMouzas.isNotEmpty()) {
-                                val queueSize = advisorProfile.mouzasPerQueue
+                                val queueSize = 7 // Phase 2: Strictly enforce 7 mouzas per batch
                                 val startBatchNum = (allTasks.maxOfOrNull { it.batchNumber } ?: 0) + 1
                                 val timestamp = System.currentTimeMillis()
                                 val recordTypes = sampleTask.recordTypes.ifEmpty { com.example.data.model.RecordType.values().toSet() }
@@ -158,103 +158,42 @@ class DownloadQueueWorker(
 
             queueDao.updateTask(task.copy(status = TaskStatus.DOWNLOADING, progress = 5, speedKbps = 340))
 
-            val totalSteps = 10
-            val totalKhatians = task.totalKhatians
+            // Section 1: Eliminate simulated downloads. No artificial delays or fake progress bars.
+            // A task can only become COMPLETED if an actual document is received and validated.
 
-            for (step in 1..totalSteps) {
-                var retryCount = 0
-                val maxRetries = 3
-                var success = false
-
-                while (retryCount <= maxRetries && !success) {
-                    if (isStopped) {
-                        queueDao.updateTask(task.copy(status = TaskStatus.PENDING, progress = 0))
-                        return@withContext Result.retry()
-                    }
-                    try {
-                        // Simulated intermittent network hiccup on first attempt only; recovers via exponential backoff
-                        if (retryCount == 0 && Random.nextInt(100) < 4) {
-                            throw java.io.IOException("Transient Network Timeout")
-                        }
-                        delay(advisorProfile.stepDelayMs + Random.nextLong(25, 75))
-                        success = true
-                    } catch (e: Exception) {
-                        retryCount++
-                        if (retryCount > maxRetries) {
-                            success = true
-                        } else {
-                            val backoffMs = (Math.pow(2.0, retryCount.toDouble()) * 150L).toLong()
-                            delay(backoffMs)
-                        }
-                    }
+            when (task.retrievalMode) {
+                com.example.data.model.RetrievalMode.MODE_A_AUTHORIZED_API -> {
+                    // Mode A requires an official, permitted access method (Adapter).
+                    // Since no authorized adapter is configured in this Phase, we fail safely.
+                    queueDao.updateTask(
+                        task.copy(
+                            status = TaskStatus.FAILED,
+                            progress = 0,
+                            errorDetails = "Authorized Automated Retrieval (Mode A) is currently unavailable. No official API adapter configured."
+                        )
+                    )
+                    // Continue to next task in queue
+                    continue
                 }
-
-                val progress = (step * 10).coerceAtMost(100)
-                val downloaded = (progress * totalKhatians) / 100
-                val speed = 340 + Random.nextInt(280)
-
-                queueDao.updateTask(
-                    task.copy(
-                        progress = progress,
-                        downloadedKhatians = downloaded,
-                        speedKbps = speed,
-                        status = if (progress >= 100) TaskStatus.COMPLETED else TaskStatus.DOWNLOADING
-                    )
-                )
-
-                try {
-                    setProgress(
-                        androidx.work.workDataOf(
-                            DownloadWorkManagerHelper.KEY_PROGRESS_PERCENT to progress,
-                            DownloadWorkManagerHelper.KEY_ITEM_PROGRESS to progress,
-                            DownloadWorkManagerHelper.KEY_ACTIVE_TASK_NAME to task.mouzaNameBn,
-                            DownloadWorkManagerHelper.KEY_SPEED_KBPS to speed
+                com.example.data.model.RetrievalMode.MODE_B_USER_ASSISTED -> {
+                    // Mode B: User-assisted workflow.
+                    // Set status to AWAITING_USER_IMPORT and stop processing this task.
+                    // The UI will detect this status and prompt the user to import a PDF.
+                    queueDao.updateTask(
+                        task.copy(
+                            status = TaskStatus.AWAITING_USER_IMPORT,
+                            progress = 10,
+                            speedKbps = 0
                         )
                     )
-                    setForeground(
-                        createForegroundInfo(
-                            "📥 Queue #${task.batchNumber}: ${task.mouzaNameBn}",
-                            "$downloaded/$totalKhatians Khatians • $speed KB/s",
-                            progress,
-                            100
-                        )
-                    )
-                } catch (ignored: Exception) {}
+                    // Awaiting user action, move to next task
+                    continue
+                }
             }
 
-            val finished = queueDao.getTaskById(task.id)
-            if (finished != null && finished.status == TaskStatus.COMPLETED) {
-                saveMouzaFile(finished)
-                val sizeMb = String.format("%.2f MB", finished.fileSizeBytes / (1024.0 * 1024.0))
-                savedRecordDao.insertRecord(
-                    SavedRecord(
-                        id = finished.id,
-                        mouzaId = finished.mouzaId,
-                        mouzaNameBn = finished.mouzaNameBn,
-                        mouzaNameEn = finished.mouzaNameEn,
-                        jlNo = finished.jlNo,
-                        upazilaNameBn = finished.upazilaNameBn,
-                        districtNameBn = finished.districtNameBn,
-                        recordType = finished.recordTypeLabel,
-                        khatianCount = finished.totalKhatians,
-                        fileSizeFormatted = sizeMb
-                    )
-                )
-                if (!isStopped) delay(Random.nextLong(120, 260))
-            }
         }
         showCompletionNotification()
         Result.success()
-    }
-
-    private fun saveMouzaFile(task: DownloadTask) {
-        try {
-            val district = LandRecordsDataset.districts.find { it.nameBn == task.districtNameBn || it.nameEn.equals(task.districtNameBn, ignoreCase = true) } ?: LandRecordsDataset.districts.firstOrNull()
-            val upazila = district?.upazilas?.find { it.nameBn == task.upazilaNameBn || it.nameEn.equals(task.upazilaNameBn, ignoreCase = true) } ?: district?.upazilas?.firstOrNull()
-            if (district != null && upazila != null) {
-                LandRecordStorageManager.saveMouzaRecordFile(applicationContext, task, district, upazila)
-            }
-        } catch (e: Exception) { e.printStackTrace() }
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo = createForegroundInfo("🛡️ Anti-Freeze Downloader Active", "Processing...", 0, 100, true)

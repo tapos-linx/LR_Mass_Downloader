@@ -3825,10 +3825,12 @@ fun DownloadTaskCard(task: DownloadTask) {
                         Text("Done", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = EmeraldDark))
                     }
                 }
-                TaskStatus.DOWNLOADING, TaskStatus.AUTHENTICATING, TaskStatus.VERIFYING -> {
+                TaskStatus.DOWNLOADING, TaskStatus.RUNNING, TaskStatus.AUTHENTICATING, TaskStatus.VERIFYING, TaskStatus.VALIDATING, TaskStatus.AWAITING_USER_IMPORT -> {
                     val activeLabel = when (task.status) {
                         TaskStatus.AUTHENTICATING -> "Auth"
                         TaskStatus.VERIFYING -> "Verifying"
+                        TaskStatus.VALIDATING -> "Validating"
+                        TaskStatus.AWAITING_USER_IMPORT -> "Manual"
                         else -> "${task.progress}%"
                     }
                     Text(

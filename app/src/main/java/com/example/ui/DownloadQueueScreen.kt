@@ -1,5 +1,7 @@
 package com.example.ui
 
+import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -163,6 +165,23 @@ fun DownloadQueueScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var activeTaskIdForImport by remember { mutableStateOf<String?>(null) }
+
+    val pdfPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            val taskId = activeTaskIdForImport ?: return@let
+            context.contentResolver.openInputStream(it)?.use { stream ->
+                val bytes = stream.readBytes()
+                val fileName = "imported_${System.currentTimeMillis()}.pdf"
+                viewModel.importPdfForTask(context, taskId, bytes, fileName)
+            }
+            activeTaskIdForImport = null
+        }
+    }
+
     BackHandler {
         onNavigateBack()
     }
@@ -385,7 +404,14 @@ fun DownloadQueueScreen(
                         task = task,
                         queuePosition = index + 1,
                         onRetry = { viewModel.retryTask(task.id) },
-                        onRemove = { viewModel.removeTaskFromQueue(task.id) }
+                        onRemove = { viewModel.removeTaskFromQueue(task.id) },
+                        onImportPdf = {
+                            activeTaskIdForImport = task.id
+                            pdfPickerLauncher.launch("application/pdf")
+                        },
+                        onOpenBrowser = {
+                            viewModel.openUserAssistedBrowserForTask(context, task)
+                        }
                     )
                 }
             }
@@ -454,7 +480,14 @@ fun DownloadQueueScreen(
                         task = task,
                         queuePosition = index + 1,
                         onRetry = { viewModel.retryTask(task.id) },
-                        onRemove = { viewModel.removeTaskFromQueue(task.id) }
+                        onRemove = { viewModel.removeTaskFromQueue(task.id) },
+                        onImportPdf = {
+                            activeTaskIdForImport = task.id
+                            pdfPickerLauncher.launch("application/pdf")
+                        },
+                        onOpenBrowser = {
+                            viewModel.openUserAssistedBrowserForTask(context, task)
+                        }
                     )
                 }
             }
@@ -1273,12 +1306,15 @@ private fun GovTechQueueTaskCard(
     task: DownloadTask,
     queuePosition: Int,
     onRetry: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onImportPdf: () -> Unit,
+    onOpenBrowser: () -> Unit
 ) {
     val isSuccess = task.status == TaskStatus.COMPLETED
-    val isRunning = task.status == TaskStatus.DOWNLOADING
-    val isFailed = task.status == TaskStatus.FAILED
-    val isPending = task.status == TaskStatus.PENDING
+    val isRunning = task.status == TaskStatus.DOWNLOADING || task.status == TaskStatus.RUNNING
+    val isFailed = task.status == TaskStatus.FAILED || task.status == TaskStatus.UNAVAILABLE
+    val isPending = task.status == TaskStatus.PENDING || task.status == TaskStatus.WAITING_FOR_USER
+    val isAwaitingImport = task.status == TaskStatus.AWAITING_USER_IMPORT || task.status == TaskStatus.WAITING_FOR_USER
 
     val animatedTaskProgress by animateFloatAsState(
         targetValue = (task.progress / 100f).coerceIn(0f, 1f),
@@ -1290,6 +1326,7 @@ private fun GovTechQueueTaskCard(
         targetValue = when {
             isRunning -> BlueAccent.copy(alpha = 0.65f)
             isPending -> AmberAccent.copy(alpha = 0.45f)
+            isAwaitingImport -> LogoMagenta.copy(alpha = 0.65f)
             isSuccess -> EmeraldPrimary.copy(alpha = 0.45f)
             isFailed -> RoseError.copy(alpha = 0.65f)
             else -> Slate200
@@ -1347,6 +1384,7 @@ private fun GovTechQueueTaskCard(
                                 when {
                                     isSuccess -> EmeraldContainer
                                     isRunning -> BlueContainer
+                                    isAwaitingImport -> LogoMagenta.copy(alpha = 0.12f)
                                     isFailed -> RoseContainer
                                     else -> AmberContainer.copy(alpha = 0.75f)
                                 }
@@ -1357,6 +1395,7 @@ private fun GovTechQueueTaskCard(
                             imageVector = when {
                                 isSuccess -> Icons.Default.CheckCircle
                                 isRunning -> Icons.Default.Sync
+                                isAwaitingImport -> Icons.Default.Description
                                 isFailed -> Icons.Default.Error
                                 else -> Icons.Default.HourglassTop
                             },
@@ -1364,6 +1403,7 @@ private fun GovTechQueueTaskCard(
                             tint = when {
                                 isSuccess -> EmeraldDark
                                 isRunning -> BlueAccent
+                                isAwaitingImport -> LogoMagenta
                                 isFailed -> RoseError
                                 else -> AmberDark
                             },
@@ -1491,6 +1531,33 @@ private fun GovTechQueueTaskCard(
                                 Text("Retry", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
+                        isAwaitingImport -> {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedButton(
+                                    onClick = onOpenBrowser,
+                                    shape = RoundedCornerShape(999.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Portal", fontSize = 10.sp)
+                                }
+                                Button(
+                                    onClick = onImportPdf,
+                                    colors = ButtonDefaults.buttonColors(containerColor = LogoMagenta),
+                                    shape = RoundedCornerShape(999.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .height(36.dp)
+                                        .testTag("import_pdf_button_${task.id}")
+                                ) {
+                                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Import PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                         isPending -> {
                             Surface(
                                 color = AmberContainer.copy(alpha = 0.85f),
@@ -1557,7 +1624,8 @@ private fun GovTechQueueTaskCard(
                         text = when {
                             isSuccess -> "Verified ${task.totalKhatians}/${task.totalKhatians} Khatians"
                             isRunning -> "Downloading ${task.downloadedKhatians}/${task.totalKhatians} Khatians"
-                            isFailed -> "Connection interrupted • Tap Retry"
+                            isAwaitingImport -> "Awaiting Manual PDF Import • Tap to Open Portal"
+                            isFailed -> task.errorDetails ?: "Connection interrupted • Tap Retry"
                             else -> "Waiting in Queue • ${task.totalKhatians} Khatians"
                         },
                         style = MaterialTheme.typography.labelSmall.copy(
