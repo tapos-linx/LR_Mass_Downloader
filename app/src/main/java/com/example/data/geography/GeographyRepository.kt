@@ -1,30 +1,51 @@
 package com.example.data.geography
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.withContext
 
 /**
- * Repository managing the normalized Bangladesh Geographical Database (8 Divisions, 64 Districts,
- * Upazilas, Mouzas, Aliases, JL Numbers, Survey Availability, Data Sources, and Import History).
+ * Authoritative Repository for the Bangladesh 8-Division, 64-District, Upazila, and Mouza
+ * geographical database.
  */
 class GeographyRepository(private val geographyDao: GeographyDao) {
 
-    val allDivisions: Flow<List<DivisionEntity>> = geographyDao.observeAllDivisions()
-    val allDistricts: Flow<List<DistrictEntity>> = geographyDao.observeAllDistricts()
-    val verifiedMouzaCount: Flow<Int> = geographyDao.observeVerifiedMouzaCount()
     val dataSources: Flow<List<GeographyDataSourceEntity>> = geographyDao.observeDataSources()
+
     val importHistory: Flow<List<GeographyImportHistoryEntity>> = geographyDao.observeImportHistory()
 
+    fun observeDivisions(): Flow<List<DivisionEntity>> = geographyDao.observeAllDivisions()
+
+    fun observeAllDistricts(): Flow<List<DistrictEntity>> = geographyDao.observeAllDistricts()
+
+    fun observeAllUpazilas(): Flow<List<UpazilaEntity>> = geographyDao.observeAllUpazilas()
+
+    fun observeAllMouzas(): Flow<List<MouzaEntity>> = geographyDao.observeAllMouzas()
+
+    fun observeDistrictsByDivision(divisionId: String): Flow<List<DistrictEntity>> =
+        geographyDao.observeDistrictsByDivision(divisionId)
+
+    fun observeUpazilasByDistrict(districtId: String): Flow<List<UpazilaEntity>> =
+        geographyDao.observeUpazilasByDistrict(BangladeshGeographyCatalog.resolveCanonicalDistrictId(districtId))
+
+    fun observeMouzasByUpazila(upazilaId: String): Flow<List<MouzaEntity>> =
+        geographyDao.observeMouzasByUpazila(BangladeshGeographyCatalog.resolveCanonicalUpazilaId(upazilaId))
+
+    fun observeImportHistory(): Flow<List<GeographyImportHistoryEntity>> =
+        geographyDao.observeImportHistory()
+
     /**
-     * Ensures the normalized database tables are populated with all 8 Divisions, all 64 Districts,
-     * verified Upazilas, and verified Mouzas on initial launch.
+     * Ensures the Room database is seeded with the complete 8-Division, 64-District,
+     * and official Upazila/Mouza catalog, and reconciles any legacy `"adarsha-sadar"` records.
      */
-    suspend fun ensureSeeded() = withContext(Dispatchers.IO) {
-        val currentDivisions = geographyDao.getDivisionCount()
-        val currentDistricts = geographyDao.getDistrictCount()
-        if (currentDivisions >= 8 && currentDistricts >= 64) {
-            return@withContext
+    suspend fun ensureSeeded() {
+        val existingDivisions = geographyDao.getDivisionsCount()
+        val existingDistricts = geographyDao.getDistrictsCount()
+        val existingUpazilas = geographyDao.getUpazilasCount()
+        val catalogUpazilasCount = BangladeshGeographyCatalog.upazilas.size
+
+        if (existingDivisions >= 8 && existingDistricts >= 64 && existingUpazilas >= catalogUpazilasCount) {
+            geographyDao.migrateMouzaUpazilaId("adarsha-sadar", "cumilla-adarsha-sadar")
+            geographyDao.deleteUpazilaById("adarsha-sadar")
+            return
         }
 
         val now = System.currentTimeMillis()
@@ -33,23 +54,21 @@ class GeographyRepository(private val geographyDao: GeographyDao) {
         geographyDao.insertDivisions(bundle.divisions)
         geographyDao.insertDistricts(bundle.districts)
         geographyDao.insertUpazilas(bundle.upazilas)
+        geographyDao.migrateMouzaUpazilaId("adarsha-sadar", "cumilla-adarsha-sadar")
+        geographyDao.deleteUpazilaById("adarsha-sadar")
         geographyDao.insertMouzas(bundle.mouzas)
         geographyDao.insertMouzaAliases(bundle.aliases)
         geographyDao.insertMouzaJlNumbers(bundle.jlNumbers)
         geographyDao.insertSurveyAvailabilities(bundle.availabilities)
 
-        val totalSeededRecords = bundle.divisions.size + bundle.districts.size +
-            bundle.upazilas.size + bundle.mouzas.size
-
         geographyDao.insertDataSource(
             GeographyDataSourceEntity(
-                id = BangladeshGeographyCatalog.OFFICIAL_SOURCE_ID,
+                sourceId = BangladeshGeographyCatalog.OFFICIAL_SOURCE_ID,
                 sourceName = BangladeshGeographyCatalog.OFFICIAL_SOURCE_NAME,
                 sourceUrl = BangladeshGeographyCatalog.OFFICIAL_SOURCE_URL,
+                retrievalDate = now,
                 datasetVersion = BangladeshGeographyCatalog.DATASET_VERSION,
-                verificationStatus = GeoVerificationStatus.VERIFIED,
-                recordCount = totalSeededRecords,
-                importedAt = now
+                recordCount = bundle.divisions.size + bundle.districts.size + bundle.upazilas.size + bundle.mouzas.size
             )
         )
 
@@ -57,165 +76,146 @@ class GeographyRepository(private val geographyDao: GeographyDao) {
             GeographyImportHistoryEntity(
                 sourceName = BangladeshGeographyCatalog.OFFICIAL_SOURCE_NAME,
                 sourceUrl = BangladeshGeographyCatalog.OFFICIAL_SOURCE_URL,
-                importDate = now,
+                importedAt = now,
                 datasetVersion = BangladeshGeographyCatalog.DATASET_VERSION,
-                verificationStatus = GeoVerificationStatus.VERIFIED,
-                recordCount = totalSeededRecords,
-                importErrors = "0 errors (8 Divisions, 64 Districts, ${bundle.upazilas.size} Upazilas, ${bundle.mouzas.size} Verified Mouzas)"
+                recordCount = bundle.mouzas.size,
+                importErrors = "0 errors (Initial Verified Seed)"
             )
         )
     }
 
-    suspend fun getDivisionsDirect(): List<DivisionEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        geographyDao.getAllDivisionsDirect()
+    suspend fun getUpazilasForDistrict(districtId: String): List<UpazilaEntity> {
+        val canonicalDistrictId = BangladeshGeographyCatalog.resolveCanonicalDistrictId(districtId)
+        if (canonicalDistrictId.isEmpty()) return emptyList()
+        return geographyDao.getUpazilasByDistrictDirect(canonicalDistrictId)
     }
 
-    suspend fun getDistrictsByDivision(divisionId: String): List<DistrictEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        geographyDao.getDistrictsByDivisionDirect(divisionId)
-    }
+    suspend fun getMouzasForSelectedUpazilas(
+        upazilaIds: Set<String>,
+        verifiedOnly: Boolean = false,
+        districtId: String? = null
+    ): List<MouzaEntity> {
+        if (upazilaIds.isEmpty()) return emptyList()
+        val canonicalUpazilaIds = upazilaIds.map { BangladeshGeographyCatalog.resolveCanonicalUpazilaId(it) }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        if (canonicalUpazilaIds.isEmpty()) return emptyList()
 
-    suspend fun getAllDistrictsDirect(): List<DistrictEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        geographyDao.getAllDistrictsDirect()
-    }
-
-    suspend fun getUpazilasByDistrict(districtId: String): List<UpazilaEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        geographyDao.getUpazilasByDistrictDirect(districtId)
-    }
-
-    suspend fun getUpazilasByDistricts(districtIds: List<String>): List<UpazilaEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        if (districtIds.isEmpty()) emptyList() else geographyDao.getUpazilasByDistrictsDirect(districtIds)
-    }
-
-    suspend fun getMouzasByUpazila(upazilaId: String): List<MouzaEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        geographyDao.getMouzasByUpazilaDirect(upazilaId)
-    }
-
-    suspend fun getMouzasByUpazilas(upazilaIds: List<String>): List<MouzaEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        if (upazilaIds.isEmpty()) emptyList() else geographyDao.getMouzasByUpazilasDirect(upazilaIds)
-    }
-
-    suspend fun getMouzasByDistrict(districtId: String): List<MouzaEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        geographyDao.getMouzasByDistrictDirect(districtId)
-    }
-
-    suspend fun getMouzasByDivision(divisionId: String): List<MouzaEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        geographyDao.getMouzasByDivisionDirect(divisionId)
-    }
-
-    suspend fun getAllVerifiedMouzas(): List<MouzaEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        geographyDao.getAllVerifiedMouzasDirect()
-    }
-
-    suspend fun searchMouzas(
-        query: String,
-        upazilaId: String? = null,
-        limit: Int = 100,
-        offset: Int = 0
-    ): List<MouzaEntity> = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        geographyDao.searchMouzasPaged(query = query.trim(), upazilaId = upazilaId, limit = limit, offset = offset)
+        val raw = if (!districtId.isNullOrBlank()) {
+            val canonicalDistrictId = BangladeshGeographyCatalog.resolveCanonicalDistrictId(districtId)
+            geographyDao.getMouzasForUpazilasInDistrictDirect(canonicalDistrictId, canonicalUpazilaIds)
+        } else {
+            geographyDao.getMouzasForUpazilasDirect(canonicalUpazilaIds)
+        }
+        val filtered = if (verifiedOnly) {
+            raw.filter { it.verificationStatus == GeoVerificationStatus.VERIFIED }
+        } else {
+            raw
+        }
+        return filtered.distinctBy { "${it.upazilaId}|${it.jlNumber}|${it.nameEn.lowercase()}" }
     }
 
     suspend fun getCoverageSummary(
-        selectedDistrictIds: Set<String> = emptySet(),
-        selectedUpazilaIds: Set<String> = emptySet(),
-        loadedMouzas: List<MouzaEntity> = emptyList(),
-        selectedMouzaIds: Set<String> = emptySet(),
-        selectedSurveyCount: Int = 1
-    ): GeographyCoverageSummary = withContext(Dispatchers.IO) {
-        ensureSeeded()
-        val divCount = geographyDao.getDivisionCount()
-        val distCount = geographyDao.getDistrictCount()
-        val upaCount = geographyDao.getUpazilaCount()
-        val verifiedMouzas = geographyDao.getVerifiedMouzaCountDirect()
-        val unverifiedMouzas = geographyDao.getUnverifiedMouzaCountDirect()
+        selectedDistrictIds: Set<String>,
+        selectedUpazilaIds: Set<String>,
+        selectedMouzaIds: Set<String>
+    ): GeographyCoverageSummary = computeCoverageSummary(
+        selectedDistrictIds = selectedDistrictIds,
+        selectedUpazilaIds = selectedUpazilaIds,
+        selectedMouzaIds = selectedMouzaIds
+    )
 
-        val selectedMouzas = loadedMouzas.filter { it.id in selectedMouzaIds }
-        val availCount = selectedMouzas.count { it.verificationStatus == GeoVerificationStatus.VERIFIED }
-        val unknownCount = selectedMouzas.count { it.verificationStatus != GeoVerificationStatus.VERIFIED }
+    suspend fun computeCoverageSummary(
+        selectedDistrictIds: Set<String>,
+        selectedUpazilaIds: Set<String>,
+        selectedMouzaIds: Set<String>
+    ): GeographyCoverageSummary {
+        val totalDivisions = geographyDao.getDivisionsCount()
+        val totalDistricts = geographyDao.getDistrictsCount()
+        val totalUpazilas = geographyDao.getUpazilasCount()
+        val totalMouzas = geographyDao.getTotalMouzasCount()
+        val verifiedMouzas = geographyDao.getVerifiedMouzasCount()
+        val unverifiedMouzas = geographyDao.getUnverifiedMouzasCount()
 
-        GeographyCoverageSummary(
-            totalDivisions = divCount,
-            totalDistricts = distCount,
-            totalUpazilas = upaCount,
+        val canonicalDistrictId = selectedDistrictIds.firstOrNull()?.let {
+            BangladeshGeographyCatalog.resolveCanonicalDistrictId(it)
+        }
+        val mouzasInUpazilas = if (selectedUpazilaIds.isEmpty()) {
+            emptyList()
+        } else {
+            getMouzasForSelectedUpazilas(
+                upazilaIds = selectedUpazilaIds,
+                verifiedOnly = false,
+                districtId = canonicalDistrictId
+            )
+        }
+
+        val availabilities = if (selectedMouzaIds.isEmpty()) {
+            emptyList()
+        } else {
+            geographyDao.getSurveyAvailabilitiesForMouzas(selectedMouzaIds.toList())
+        }
+
+        val mouzasWithAvailable = availabilities
+            .filter { it.availabilityStatus == SurveyAvailabilityStatus.AVAILABLE }
+            .map { it.mouzaId }
+            .toSet()
+            .size
+
+        val mouzasManual = availabilities
+            .filter { it.availabilityStatus == SurveyAvailabilityStatus.MANUAL_RETRIEVAL_REQUIRED }
+            .map { it.mouzaId }
+            .toSet()
+            .size
+
+        val unknownCount = (selectedMouzaIds.size - mouzasWithAvailable).coerceAtLeast(0)
+
+        var isDistrictComplete = false
+        var warningMessage: String? = null
+        if (!canonicalDistrictId.isNullOrBlank()) {
+            val districtUpazilas = geographyDao.getUpazilasByDistrictDirect(canonicalDistrictId)
+            val districtMouzas = geographyDao.getMouzasByDistrictDirect(canonicalDistrictId)
+            val upazilasWithMouzas = districtMouzas.map { it.upazilaId }.toSet()
+            val missingUpazilaCount = (districtUpazilas.size - upazilasWithMouzas.size).coerceAtLeast(0)
+            isDistrictComplete = districtUpazilas.isNotEmpty() && missingUpazilaCount == 0 && districtMouzas.size >= districtUpazilas.size * 5
+            if (!isDistrictComplete) {
+                warningMessage = "Incomplete district mouza dataset: ${districtMouzas.size} verified mouzas loaded across ${upazilasWithMouzas.size}/${districtUpazilas.size} upazilas. Import supplemental DLR&S JSON for full coverage."
+            }
+        }
+
+        return GeographyCoverageSummary(
+            totalDivisions = totalDivisions,
+            totalDistricts = totalDistricts,
+            totalUpazilas = totalUpazilas,
+            totalMouzas = totalMouzas,
             totalVerifiedMouzas = verifiedMouzas,
             totalUnverifiedMouzas = unverifiedMouzas,
-            upazilasMissingMouzaDataset = (upaCount - 54).coerceAtLeast(0),
-            selectedDistrictsCount = selectedDistrictIds.size.coerceAtLeast(if (selectedUpazilaIds.isNotEmpty()) 1 else 0),
+            selectedDistrictsCount = selectedDistrictIds.size,
             selectedUpazilasCount = selectedUpazilaIds.size,
-            totalMouzasFoundInSelection = loadedMouzas.size,
+            totalMouzasFoundInSelection = mouzasInUpazilas.size,
             selectedMouzasCount = selectedMouzaIds.size,
-            mouzasWithAvailableSurveys = availCount,
+            mouzasWithAvailableSurveys = mouzasWithAvailable.coerceAtLeast(selectedMouzaIds.size),
             mouzasWithUnknownAvailability = unknownCount,
-            mouzasRequiringManualRetrieval = selectedMouzaIds.size, // ePorcha/external portals require Mode B user-assisted browser retrieval unless Mode A authorized API is active
-            estimatedDownloadTasksCount = selectedMouzaIds.size * selectedSurveyCount.coerceAtLeast(1)
+            mouzasRequiringManualRetrieval = mouzasManual,
+            isCurrentDistrictComplete = isDistrictComplete,
+            incompleteDataWarning = warningMessage.orEmpty()
         )
     }
 
-    /**
-     * Imports a JSON geographical update without requiring an APK rebuild.
-     * Performs JL validation and duplicate detection against existing Mouzas in the target Upazila.
-     */
-    suspend fun importGeographyJsonUpdate(jsonPayload: String): GeographyImportHistoryEntity = withContext(Dispatchers.IO) {
-        ensureSeeded()
+    suspend fun importGeographyJsonUpdate(jsonPayload: String): GeographyImportHistoryEntity {
         val parsed = BangladeshGeographyCatalog.parseJsonGeographyUpdate(jsonPayload)
-        val acceptedMouzas = mutableListOf<MouzaEntity>()
-        val allErrors = parsed.errors.toMutableList()
-        val now = System.currentTimeMillis()
-
-        for (candidate in parsed.mouzas) {
-            val existingDuplicates = geographyDao.findPotentialDuplicates(
-                upazilaId = candidate.upazilaId,
-                jlNumber = candidate.jlNumber,
-                nameEn = candidate.nameEn,
-                nameBn = candidate.nameBn
-            )
-            if (existingDuplicates.any { it.id != candidate.id }) {
-                allErrors.add("Duplicate skipped: ${candidate.nameEn} (JL ${candidate.jlNumber}) already exists in ${candidate.upazilaId}")
-                continue
-            }
-            acceptedMouzas.add(candidate)
+        if (parsed.mouzas.isNotEmpty()) {
+            geographyDao.insertMouzas(parsed.mouzas)
         }
-
-        if (acceptedMouzas.isNotEmpty()) {
-            geographyDao.insertMouzas(acceptedMouzas)
-            geographyDao.insertDataSource(
-                GeographyDataSourceEntity(
-                    id = "import_${now}",
-                    sourceName = parsed.sourceName,
-                    sourceUrl = parsed.sourceUrl,
-                    datasetVersion = parsed.datasetVersion,
-                    verificationStatus = acceptedMouzas.first().verificationStatus,
-                    recordCount = acceptedMouzas.size,
-                    importedAt = now
-                )
-            )
-        }
-
-        val historyEntry = GeographyImportHistoryEntity(
+        val history = GeographyImportHistoryEntity(
             sourceName = parsed.sourceName,
             sourceUrl = parsed.sourceUrl,
-            importDate = now,
+            importedAt = System.currentTimeMillis(),
             datasetVersion = parsed.datasetVersion,
-            verificationStatus = if (acceptedMouzas.any { it.verificationStatus == GeoVerificationStatus.VERIFIED }) {
-                GeoVerificationStatus.VERIFIED
-            } else {
-                GeoVerificationStatus.COMMUNITY_CONTRIBUTED
-            },
-            recordCount = acceptedMouzas.size,
-            importErrors = if (allErrors.isEmpty()) "0 errors" else allErrors.joinToString("; ")
+            recordCount = parsed.mouzas.size,
+            importErrors = if (parsed.errors.isEmpty()) "0 errors" else parsed.errors.joinToString("; ")
         )
-        geographyDao.insertImportHistory(historyEntry)
-        historyEntry
+        geographyDao.insertImportHistory(history)
+        return history
     }
 }

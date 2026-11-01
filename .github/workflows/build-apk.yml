@@ -49,30 +49,13 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Setup Android SDK
+      - name: Setup Android SDK & Build Tools
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'tools platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x gradlew || true
-
-      - name: Prepare Release Signing Keystore (From GitHub Secrets or CI Fallback)
-        env:
-          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
-          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          if [ ! -f debug.keystore ]; then
-            keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          if [ -n "$SIGNING_KEYSTORE_BASE64" ]; then
-            echo "$SIGNING_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
-            echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> $GITHUB_ENV
-            echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> $GITHUB_ENV
-          else
-            keytool -genkey -v -keystore my-upload-key.jks -alias upload -storepass lrgetbd_release_store -keypass lrgetbd_release_key -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=LRgetBD Release,O=LRgetBD Open Source,C=BD"
-            echo "STORE_PASSWORD=lrgetbd_release_store" >> $GITHUB_ENV
-            echo "KEY_PASSWORD=lrgetbd_release_key" >> $GITHUB_ENV
-          fi
 
       - name: Run Unit & Robolectric QA Tests
         run: |
@@ -82,6 +65,22 @@ jobs:
         run: |
           ./gradlew :app:lintDebug --stacktrace || gradle :app:lintDebug --stacktrace
 
+      - name: Decode Persistent Release Signing Keystore from GitHub Secrets
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SECRET_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          if [ -z "$SIGNING_KEYSTORE_BASE64" ] || [ -z "$SECRET_STORE_PASSWORD" ] || [ -z "$SECRET_KEY_PASSWORD" ]; then
+            echo "ERROR: Persistent release signing secrets (SIGNING_KEYSTORE_BASE64, STORE_PASSWORD, KEY_PASSWORD) are required to preserve upgrade compatibility."
+            exit 1
+          fi
+          echo "$SIGNING_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> $GITHUB_ENV
+          echo "KEY_ALIAS=${SECRET_KEY_ALIAS:-upload}" >> $GITHUB_ENV
+
       - name: Build Signed Production Release APK (LRgetBD.apk)
         env:
           VERSION_CODE: ${{ env.VERSION_CODE }}
@@ -89,10 +88,11 @@ jobs:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ env.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ env.KEY_ALIAS }}
         run: |
           ./gradlew :app:assembleRelease --stacktrace || gradle :app:assembleRelease --stacktrace
 
-      - name: Verify Signed Release APK Output & Generate SHA-256 Checksum
+      - name: Verify Package Identity, Signing Certificate & Generate SHA-256 Checksum
         run: |
           mkdir -p release-output
           RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
@@ -100,14 +100,23 @@ jobs:
             echo "ERROR: Signed release APK was not found or is empty!"
             exit 1
           fi
+          APKSIGNER_BIN=$(find "$ANDROID_HOME/build-tools" -name "apksigner" | sort -V | tail -n 1)
+          AAPT2_BIN=$(find "$ANDROID_HOME/build-tools" -name "aapt2" | sort -V | tail -n 1)
+          if [ -n "$APKSIGNER_BIN" ]; then
+            "$APKSIGNER_BIN" verify --verbose --print-certs "$RELEASE_APK"
+          fi
+          if [ -n "$AAPT2_BIN" ]; then
+            "$AAPT2_BIN" dump badging "$RELEASE_APK" | head -n 5
+          fi
           cp "$RELEASE_APK" release-output/LRgetBD.apk
           cp "$RELEASE_APK" release-output/LRMassDownloader.apk
           cd release-output
           sha256sum LRgetBD.apk > LRgetBD.apk.sha256
+          sha256sum LRMassDownloader.apk > LRMassDownloader.apk.sha256
           cat LRgetBD.apk.sha256
           ls -lh
 
-      - name: Clean Ephemeral Signing Keystore
+      - name: Clean Decoded Signing Keystore
         if: always()
         run: rm -f my-upload-key.jks
 
@@ -118,11 +127,13 @@ jobs:
           path: |
             release-output/LRgetBD.apk
             release-output/LRgetBD.apk.sha256
+            release-output/LRMassDownloader.apk
+            release-output/LRMassDownloader.apk.sha256
           retention-days: 90
 
-      - name: Publish GitHub Release (LRgetBD.apk + SHA-256)
+      - name: Publish GitHub Release on Version Tags (LRgetBD.apk + SHA-256)
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           tag_name: ${{ env.VERSION_TAG }}
           name: "LRgetBD ${{ env.VERSION_TAG }} (Build ${{ env.VERSION_CODE }})"
@@ -132,11 +143,11 @@ jobs:
           generate_release_notes: true
           body: |
             ### 📜 LRgetBD — Production Release ${{ env.VERSION_TAG }}
-            **Complete Bangladesh Geographical Database, Automatic Mouza Selection & Intelligent Mass Land-Record Archive**
+            **Complete Bangladesh Geographical Database, Strict District Isolation, 7-Mouza Batch Queue & Verified Land-Record Archive**
 
-            #### 🚀 Direct Production APK Download (100% Free & Public):
-            - 👉 [**Download LRgetBD.apk (Latest Signed Release)**](https://github.com/${{ github.repository }}/releases/latest/download/LRgetBD.apk)
-            - 🔐 [**Download LRgetBD.apk.sha256 Checksum**](https://github.com/${{ github.repository }}/releases/latest/download/LRgetBD.apk.sha256)
+            #### 🚀 Direct Production APK Download:
+            - 👉 [**Download LRgetBD.apk (Latest Signed Release)**](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION_TAG }}/LRgetBD.apk)
+            - 🔐 [**Download LRgetBD.apk.sha256 Checksum**](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION_TAG }}/LRgetBD.apk.sha256)
 
             ---
 
@@ -144,12 +155,13 @@ jobs:
             - **Version Name:** `${{ env.VERSION_NAME }}`
             - **Version Code:** `${{ env.VERSION_CODE }}`
             - **Git Commit:** `${{ github.sha }}`
-            - **Geographic Coverage:** All 8 Divisions, All 64 Districts, Verified Upazilas & Mouzas
-            - **Batch Engine:** 7 Mouzas per Batch (`Room` + `WorkManager` persistent queue)
+            - **Geographic Coverage:** All 8 Divisions, All 64 Districts, Canonical Upazilas & Verified Mouzas
+            - **Batch Engine:** Exactly 7 Mouzas per Batch (`Room` + `WorkManager` persistent queue)
             - **Document Integrity:** ISO 32000-1 PDF structure validation & cryptographic `SHA-256` checksums
           files: |
             release-output/LRgetBD.apk
             release-output/LRgetBD.apk.sha256
             release-output/LRMassDownloader.apk
+            release-output/LRMassDownloader.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

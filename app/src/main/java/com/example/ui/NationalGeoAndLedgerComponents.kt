@@ -435,6 +435,38 @@ fun NationalGeographicExplorerCard(
                         )
                     }
                 }
+
+                if (coverageSummary.incompleteDataWarning.isNotBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = AmberContainer,
+                        border = BorderStroke(1.dp, AmberDark.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("incomplete_data_warning_banner")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Incomplete Geographic Coverage Warning",
+                                tint = AmberDark,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = coverageSummary.incompleteDataWarning,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = AmberDark,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 11.sp
+                                )
+                            )
+                        }
+                    }
+                }
             }
 
             // Retrieval Mode Selector (Mode A Authorized vs Mode B User-Assisted Browser)
@@ -531,7 +563,7 @@ fun NationalGeographicExplorerCard(
                 ) {
                     Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Browser Assistant", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    Text("eporcha.tech (Free Portal)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                 }
 
                 FilledTonalButton(
@@ -545,11 +577,11 @@ fun NationalGeographicExplorerCard(
                 }
             }
 
-            // Transparent Fee & Non-Certified Copy Disclosure (Section 2 & Section 7)
+            // 100% Free Open-Access Portal Notice (https://eporcha.tech/ — No Billing or Paid Fees)
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = Slate50,
-                border = BorderStroke(1.dp, Slate200),
+                color = EmeraldContainer.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, EmeraldPrimary.copy(alpha = 0.35f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -558,16 +590,17 @@ fun NationalGeographicExplorerCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Info,
+                        imageVector = Icons.Default.VerifiedUser,
                         contentDescription = null,
-                        tint = Slate600,
+                        tint = EmeraldDark,
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "স্বচ্ছতা বিজ্ঞপ্তি: LRgetBD অ্যাপটি ডাউনলোড ও ব্যবহারের জন্য সম্পূর্ণ বিনামূল্যে (কোনো সাবস্ক্রিপশন নেই)। তবে সরকারি সার্টিফাইড কপি বা পোর্টালের নির্ধারিত সরকারি ফি প্রযোজ্য হতে পারে। আনঅফিসিয়াল কপি সরকারি সার্টিফাইড দলিল নয়।",
+                        text = "ফ্রি অ্যাক্সেস পোর্টাল (https://eporcha.tech/): পেইড সাইটের পরিবর্তে এই অ্যাপে সকলের জন্য উন্মুক্ত ও ১০০% ফ্রি https://eporcha.tech/ সংযুক্ত করা হয়েছে — এতে কোনো বিলিং সীমাবদ্ধতা, ফি বা সাবস্ক্রিপশন অপশন নেই।",
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 10.sp,
-                            color = Slate600
+                            color = EmeraldDark,
+                            fontWeight = FontWeight.SemiBold
                         )
                     )
                 }
@@ -844,8 +877,8 @@ fun GeographicDatabaseUpdateDialog(
         mutableStateOf(
             """
             {
-              "source_name": "BBS / DLR&S Supplementary Gazetteer",
-              "source_url": "https://bbs.gov.bd",
+              "source_name": "BBS / eporcha.tech Supplementary Gazetteer",
+              "source_url": "https://eporcha.tech/",
               "dataset_version": "2026.1-Supp",
               "mouzas": [
                 {

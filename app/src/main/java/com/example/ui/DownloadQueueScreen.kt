@@ -1541,7 +1541,7 @@ private fun GovTechQueueTaskCard(
                                 ) {
                                     Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(12.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Portal", fontSize = 10.sp)
+                                    Text("eporcha.tech", fontSize = 10.sp)
                                 }
                                 Button(
                                     onClick = onImportPdf,
@@ -1624,7 +1624,7 @@ private fun GovTechQueueTaskCard(
                         text = when {
                             isSuccess -> "Verified ${task.totalKhatians}/${task.totalKhatians} Khatians"
                             isRunning -> "Downloading ${task.downloadedKhatians}/${task.totalKhatians} Khatians"
-                            isAwaitingImport -> "Awaiting Manual PDF Import • Tap to Open Portal"
+                            isAwaitingImport -> "Ready on eporcha.tech (100% Free) • Tap eporcha.tech or Import PDF"
                             isFailed -> task.errorDetails ?: "Connection interrupted • Tap Retry"
                             else -> "Waiting in Queue • ${task.totalKhatians} Khatians"
                         },

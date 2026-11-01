@@ -42,10 +42,10 @@ interface MasterLandLedgerDao {
     """)
     suspend fun searchLedger(query: String, surveyType: String? = null): List<MasterLedgerEntryEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEntry(entry: MasterLedgerEntryEntity): Long
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEntries(entries: List<MasterLedgerEntryEntity>)
 
     @Update

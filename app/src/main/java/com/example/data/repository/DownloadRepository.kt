@@ -23,6 +23,7 @@ class DownloadRepository(
     suspend fun getPendingTasks() = downloadQueueDao.getPendingTasks()
     suspend fun getNextPendingTask() = downloadQueueDao.getNextPendingTask()
     suspend fun getAllTasksDirect() = downloadQueueDao.getAllTasksDirect()
+    suspend fun getQueueTasksByDistrictDirect(districtId: String) = downloadQueueDao.getQueueTasksByDistrictDirect(districtId)
     suspend fun getPendingCount() = downloadQueueDao.getPendingCount()
     suspend fun getCompletedCount() = downloadQueueDao.getCompletedCount()
     suspend fun getTotalCount() = downloadQueueDao.getTotalCount()
@@ -32,6 +33,10 @@ class DownloadRepository(
     suspend fun deleteTaskFromQueue(taskId: String) = downloadQueueDao.deleteTaskById(taskId)
     suspend fun deleteBatchFromQueue(batchNumber: Int) = downloadQueueDao.deleteBatch(batchNumber)
     suspend fun clearQueue() = downloadQueueDao.clearQueue()
+    suspend fun deleteNonCompletedTasksOutsideDistrict(activeDistrictId: String) =
+        downloadQueueDao.deleteNonCompletedTasksOutsideDistrict(activeDistrictId)
+    suspend fun deleteTasksOutsideDistrict(activeDistrictId: String) =
+        downloadQueueDao.deleteTasksOutsideDistrict(activeDistrictId)
     suspend fun resetInterruptedTasks() = downloadQueueDao.resetInterruptedTasks()
     suspend fun cancelAllPendingTasks() = downloadQueueDao.cancelAllPendingTasks()
     suspend fun markTaskUnavailable(taskId: String) = downloadQueueDao.markTaskUnavailable(taskId)

@@ -17,99 +17,100 @@ interface GeographyDao {
     suspend fun getAllDivisionsDirect(): List<DivisionEntity>
 
     @Query("SELECT COUNT(*) FROM divisions")
-    suspend fun getDivisionCount(): Int
+    suspend fun getDivisionsCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDivisions(divisions: List<DivisionEntity>)
 
     // --- Districts ---
+    @Query("SELECT * FROM districts ORDER BY name_en ASC")
+    fun observeAllDistricts(): Flow<List<DistrictEntity>>
+
+    @Query("SELECT * FROM districts ORDER BY name_en ASC")
+    suspend fun getAllDistrictsDirect(): List<DistrictEntity>
+
     @Query("SELECT * FROM districts WHERE division_id = :divisionId ORDER BY name_en ASC")
     fun observeDistrictsByDivision(divisionId: String): Flow<List<DistrictEntity>>
 
     @Query("SELECT * FROM districts WHERE division_id = :divisionId ORDER BY name_en ASC")
     suspend fun getDistrictsByDivisionDirect(divisionId: String): List<DistrictEntity>
 
-    @Query("SELECT * FROM districts ORDER BY division_id ASC, name_en ASC")
-    fun observeAllDistricts(): Flow<List<DistrictEntity>>
-
-    @Query("SELECT * FROM districts ORDER BY division_id ASC, name_en ASC")
-    suspend fun getAllDistrictsDirect(): List<DistrictEntity>
-
     @Query("SELECT * FROM districts WHERE id = :districtId LIMIT 1")
     suspend fun getDistrictById(districtId: String): DistrictEntity?
 
     @Query("SELECT COUNT(*) FROM districts")
-    suspend fun getDistrictCount(): Int
+    suspend fun getDistrictsCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDistricts(districts: List<DistrictEntity>)
 
     // --- Upazilas ---
+    @Query("SELECT * FROM upazilas ORDER BY name_en ASC")
+    fun observeAllUpazilas(): Flow<List<UpazilaEntity>>
+
+    @Query("SELECT * FROM upazilas ORDER BY name_en ASC")
+    suspend fun getAllUpazilasDirect(): List<UpazilaEntity>
+
     @Query("SELECT * FROM upazilas WHERE district_id = :districtId ORDER BY name_en ASC")
     fun observeUpazilasByDistrict(districtId: String): Flow<List<UpazilaEntity>>
 
     @Query("SELECT * FROM upazilas WHERE district_id = :districtId ORDER BY name_en ASC")
     suspend fun getUpazilasByDistrictDirect(districtId: String): List<UpazilaEntity>
 
-    @Query("SELECT * FROM upazilas WHERE district_id IN (:districtIds) ORDER BY district_id ASC, name_en ASC")
-    suspend fun getUpazilasByDistrictsDirect(districtIds: List<String>): List<UpazilaEntity>
+    @Query("SELECT * FROM upazilas WHERE id = :upazilaId LIMIT 1")
+    suspend fun getUpazilaById(upazilaId: String): UpazilaEntity?
 
-    @Query("SELECT * FROM upazilas ORDER BY district_id ASC, name_en ASC")
-    fun observeAllUpazilas(): Flow<List<UpazilaEntity>>
-
-    @Query("SELECT * FROM upazilas ORDER BY district_id ASC, name_en ASC")
-    suspend fun getAllUpazilasDirect(): List<UpazilaEntity>
+    @Query("SELECT * FROM upazilas WHERE id = :upazilaId AND district_id = :districtId LIMIT 1")
+    suspend fun getUpazilaByIdAndDistrict(upazilaId: String, districtId: String): UpazilaEntity?
 
     @Query("SELECT COUNT(*) FROM upazilas")
-    suspend fun getUpazilaCount(): Int
+    suspend fun getUpazilasCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUpazilas(upazilas: List<UpazilaEntity>)
 
+    @Query("DELETE FROM upazilas WHERE id = :upazilaId")
+    suspend fun deleteUpazilaById(upazilaId: String)
+
     // --- Mouzas ---
-    @Query("SELECT * FROM mouzas WHERE upazila_id = :upazilaId ORDER BY CAST(jl_number AS INTEGER) ASC, jl_number ASC, name_en ASC")
+    @Query("SELECT * FROM mouzas ORDER BY upazila_id ASC, jl_number ASC")
+    fun observeAllMouzas(): Flow<List<MouzaEntity>>
+
+    @Query("SELECT * FROM mouzas ORDER BY upazila_id ASC, jl_number ASC")
+    suspend fun getAllMouzasDirect(): List<MouzaEntity>
+
+    @Query("SELECT * FROM mouzas WHERE upazila_id = :upazilaId ORDER BY jl_number ASC")
     fun observeMouzasByUpazila(upazilaId: String): Flow<List<MouzaEntity>>
 
-    @Query("SELECT * FROM mouzas WHERE upazila_id = :upazilaId ORDER BY CAST(jl_number AS INTEGER) ASC, jl_number ASC, name_en ASC")
+    @Query("SELECT * FROM mouzas WHERE upazila_id = :upazilaId ORDER BY jl_number ASC")
     suspend fun getMouzasByUpazilaDirect(upazilaId: String): List<MouzaEntity>
 
-    @Query("SELECT * FROM mouzas WHERE upazila_id IN (:upazilaIds) ORDER BY upazila_id ASC, CAST(jl_number AS INTEGER) ASC, jl_number ASC, name_en ASC")
-    fun observeMouzasByUpazilas(upazilaIds: List<String>): Flow<List<MouzaEntity>>
+    @Query("SELECT * FROM mouzas WHERE upazila_id IN (:upazilaIds) ORDER BY upazila_id ASC, jl_number ASC")
+    suspend fun getMouzasForUpazilasDirect(upazilaIds: List<String>): List<MouzaEntity>
 
-    @Query("SELECT * FROM mouzas WHERE upazila_id IN (:upazilaIds) ORDER BY upazila_id ASC, CAST(jl_number AS INTEGER) ASC, jl_number ASC, name_en ASC")
-    suspend fun getMouzasByUpazilasDirect(upazilaIds: List<String>): List<MouzaEntity>
+    /**
+     * Strict parent-child district-verified Mouza query:
+     * Returns only Mouzas whose parent Upazila is in `upazilaIds` AND belongs to `districtId`.
+     */
+    @Query("""
+        SELECT m.* FROM mouzas m
+        INNER JOIN upazilas u ON m.upazila_id = u.id
+        WHERE u.district_id = :districtId
+          AND m.upazila_id IN (:upazilaIds)
+        ORDER BY m.upazila_id ASC, m.jl_number ASC
+    """)
+    suspend fun getMouzasForUpazilasInDistrictDirect(
+        districtId: String,
+        upazilaIds: List<String>
+    ): List<MouzaEntity>
 
     @Query("""
         SELECT m.* FROM mouzas m
         INNER JOIN upazilas u ON m.upazila_id = u.id
         WHERE u.district_id = :districtId
-        ORDER BY u.name_en ASC, CAST(m.jl_number AS INTEGER) ASC, m.name_en ASC
+        ORDER BY m.upazila_id ASC, m.jl_number ASC
     """)
     suspend fun getMouzasByDistrictDirect(districtId: String): List<MouzaEntity>
-
-    @Query("""
-        SELECT m.* FROM mouzas m
-        INNER JOIN upazilas u ON m.upazila_id = u.id
-        INNER JOIN districts d ON u.district_id = d.id
-        WHERE d.division_id = :divisionId
-        ORDER BY d.name_en ASC, u.name_en ASC, CAST(m.jl_number AS INTEGER) ASC, m.name_en ASC
-    """)
-    suspend fun getMouzasByDivisionDirect(divisionId: String): List<MouzaEntity>
-
-    @Query("SELECT * FROM mouzas WHERE verification_status = 'VERIFIED' ORDER BY upazila_id ASC, jl_number ASC")
-    suspend fun getAllVerifiedMouzasDirect(): List<MouzaEntity>
-
-    @Query("SELECT * FROM mouzas ORDER BY upazila_id ASC, jl_number ASC")
-    suspend fun getAllMouzasDirect(): List<MouzaEntity>
-
-    @Query("SELECT COUNT(*) FROM mouzas WHERE verification_status = 'VERIFIED'")
-    fun observeVerifiedMouzaCount(): Flow<Int>
-
-    @Query("SELECT COUNT(*) FROM mouzas WHERE verification_status = 'VERIFIED'")
-    suspend fun getVerifiedMouzaCountDirect(): Int
-
-    @Query("SELECT COUNT(*) FROM mouzas WHERE verification_status != 'VERIFIED'")
-    suspend fun getUnverifiedMouzaCountDirect(): Int
 
     @Query("""
         SELECT DISTINCT m.* FROM mouzas m
@@ -121,70 +122,51 @@ interface GeographyDao {
               OR m.jl_number LIKE '%' || :query || '%'
               OR a.alias_name LIKE '%' || :query || '%'
           )
-        ORDER BY m.verification_status ASC, m.name_en ASC
-        LIMIT :limit OFFSET :offset
+        ORDER BY m.jl_number ASC
     """)
-    suspend fun searchMouzasPaged(
-        query: String,
-        upazilaId: String? = null,
-        limit: Int = 100,
-        offset: Int = 0
-    ): List<MouzaEntity>
+    suspend fun searchMouzas(query: String, upazilaId: String? = null): List<MouzaEntity>
 
-    @Query("""
-        SELECT * FROM mouzas
-        WHERE upazila_id = :upazilaId
-          AND (jl_number = :jlNumber OR LOWER(name_en) = LOWER(:nameEn) OR name_bn = :nameBn)
-    """)
-    suspend fun findPotentialDuplicates(
-        upazilaId: String,
-        jlNumber: String,
-        nameEn: String,
-        nameBn: String
-    ): List<MouzaEntity>
+    @Query("SELECT COUNT(*) FROM mouzas")
+    suspend fun getTotalMouzasCount(): Int
+
+    @Query("SELECT COUNT(*) FROM mouzas WHERE verification_status = 'VERIFIED'")
+    suspend fun getVerifiedMouzasCount(): Int
+
+    @Query("SELECT COUNT(*) FROM mouzas WHERE verification_status != 'VERIFIED'")
+    suspend fun getUnverifiedMouzasCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMouzas(mouzas: List<MouzaEntity>)
 
-    // --- Aliases & JL Numbers ---
+    @Query("DELETE FROM mouzas WHERE id LIKE :idPrefix || '%'")
+    suspend fun deleteMouzasByPrefix(idPrefix: String)
+
+    @Query("UPDATE mouzas SET upazila_id = :canonicalUpazilaId WHERE upazila_id = :legacyUpazilaId")
+    suspend fun migrateMouzaUpazilaId(legacyUpazilaId: String, canonicalUpazilaId: String)
+
+    // --- Aliases, JL Numbers & Survey Availability ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMouzaAliases(aliases: List<MouzaAliasEntity>)
-
-    @Query("SELECT * FROM mouza_aliases WHERE mouza_id = :mouzaId")
-    suspend fun getAliasesForMouza(mouzaId: String): List<MouzaAliasEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMouzaJlNumbers(jlNumbers: List<MouzaJlNumberEntity>)
 
-    @Query("SELECT * FROM mouza_jl_numbers WHERE mouza_id = :mouzaId")
-    suspend fun getJlNumbersForMouza(mouzaId: String): List<MouzaJlNumberEntity>
-
-    // --- Survey Availability ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSurveyAvailabilities(items: List<MouzaSurveyAvailabilityEntity>)
+    suspend fun insertSurveyAvailabilities(availabilities: List<MouzaSurveyAvailabilityEntity>)
 
     @Query("SELECT * FROM mouza_survey_availability WHERE mouza_id IN (:mouzaIds)")
     suspend fun getSurveyAvailabilitiesForMouzas(mouzaIds: List<String>): List<MouzaSurveyAvailabilityEntity>
 
-    @Query("SELECT * FROM mouza_survey_availability WHERE mouza_id = :mouzaId")
-    suspend fun getSurveyAvailabilityForMouza(mouzaId: String): List<MouzaSurveyAvailabilityEntity>
+    // --- Provenance & Import History ---
+    @Query("SELECT * FROM geography_data_sources ORDER BY retrieval_date DESC")
+    fun observeDataSources(): Flow<List<GeographyDataSourceEntity>>
 
-    // --- Data Sources & Import History ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDataSource(source: GeographyDataSourceEntity)
 
-    @Query("SELECT * FROM geography_data_sources ORDER BY imported_at DESC")
-    fun observeDataSources(): Flow<List<GeographyDataSourceEntity>>
-
-    @Query("SELECT * FROM geography_data_sources ORDER BY imported_at DESC")
-    suspend fun getDataSourcesDirect(): List<GeographyDataSourceEntity>
+    @Query("SELECT * FROM geography_import_history ORDER BY imported_at DESC")
+    fun observeImportHistory(): Flow<List<GeographyImportHistoryEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertImportHistory(history: GeographyImportHistoryEntity)
-
-    @Query("SELECT * FROM geography_import_history ORDER BY import_date DESC")
-    fun observeImportHistory(): Flow<List<GeographyImportHistoryEntity>>
-
-    @Query("SELECT * FROM geography_import_history ORDER BY import_date DESC")
-    suspend fun getImportHistoryDirect(): List<GeographyImportHistoryEntity>
 }

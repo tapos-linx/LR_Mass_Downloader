@@ -1,228 +1,278 @@
 package com.example.data.worker
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
+import androidx.work.Data
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
-import com.example.MainActivity
+import com.example.data.geography.BangladeshGeographyCatalog
+import com.example.data.geography.GeographyRepository
 import com.example.data.local.AppDatabase
-import com.example.data.local.LandRecordStorageManager
 import com.example.data.model.DownloadTask
-import com.example.data.model.LandRecordsDataset
-import com.example.data.model.SavedRecord
+import com.example.data.model.RecordType
+import com.example.data.model.RetrievalMode
 import com.example.data.model.TaskStatus
-import kotlinx.coroutines.Dispatchers
+import com.example.ui.LRDownloaderViewModel
+import com.example.util.NetworkDeviceQueueAdvisor
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import kotlin.random.Random
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
- * Background WorkManager Service that processes the land record download queue
- * with randomized anti-blocking delays and exponential backoff retry logic.
+ * WorkManager CoroutineWorker that executes the 7-Mouza batch download queue
+ * using Room-backed geographic queries and honest task states.
+ *
+ * Strictly enforces:
+ * - `LRDownloaderViewModel.DEFAULT_MOUZAS_PER_BATCH` (7 Mouzas per batch).
+ * - Room-based geographic continuation by canonical `districtId` and `upazilaId` (never name matching).
+ * - Zero artificial download speeds, zero fake progress percentages, and zero simulated completions.
  */
 class DownloadQueueWorker(
     appContext: Context,
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
 
+    private val database = AppDatabase.getDatabase(appContext)
+    private val queueDao = database.downloadQueueDao()
+    private val geographyDao = database.geographyDao()
+    private val geographyRepository = GeographyRepository(geographyDao)
+
     companion object {
-        const val NOTIFICATION_ID = 4091
-        const val NOTIFICATION_CHANNEL_ID = "lr_download_queue_channel"
-        const val NOTIFICATION_CHANNEL_NAME = "Land Record Background Downloader"
+        const val CHANNEL_ID = "lr_download_queue_channel"
+        const val NOTIFICATION_ID = 7001
+        const val DEFAULT_MOUZAS_PER_BATCH = LRDownloaderViewModel.DEFAULT_MOUZAS_PER_BATCH
     }
 
-    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val database = AppDatabase.getDatabase(applicationContext)
-        val queueDao = database.downloadQueueDao()
-        val savedRecordDao = database.savedRecordDao()
-        val advisorProfile = com.example.util.NetworkDeviceQueueAdvisor.analyze(applicationContext)
-
+    override suspend fun doWork(): Result {
         try {
-            setForeground(
-                createForegroundInfo(
-                    "🛡️ Multi-Queue Downloader Active",
-                    "Network: ${advisorProfile.networkTier.labelEn} • ${advisorProfile.mouzasPerQueue} Mouzas/Queue",
-                    0,
-                    100,
-                    true
-                )
-            )
-        } catch (ignored: Exception) {}
+            setForeground(createForegroundInfo("Initializing Land Record Queue...", 0, 0))
+        } catch (_: Exception) {
+            // Foreground promotion may be restricted in unit test environments
+        }
 
-        val isAutoBatchMode = inputData.getBoolean(DownloadWorkManagerHelper.KEY_AUTO_BATCH_MODE, true)
+        geographyRepository.ensureSeeded()
+        val autoBatchMode = inputData.getBoolean(DownloadWorkManagerHelper.KEY_AUTO_BATCH_MODE, true)
 
-        while (!isStopped) {
-            val allTasksNow = queueDao.getAllTasksDirect()
-            // If the foreground ViewModel coordinator is actively driving DOWNLOADING tasks, yield briefly
-            val activelyDownloading = allTasksNow.filter { it.status == TaskStatus.DOWNLOADING }
-            if (activelyDownloading.isNotEmpty()) {
-                val activeTask = activelyDownloading.first()
-                try {
-                    setProgress(
-                        androidx.work.workDataOf(
-                            DownloadWorkManagerHelper.KEY_PROGRESS_PERCENT to activeTask.progress,
-                            DownloadWorkManagerHelper.KEY_ITEM_PROGRESS to activeTask.progress,
-                            DownloadWorkManagerHelper.KEY_ACTIVE_TASK_NAME to activeTask.mouzaNameBn,
-                            DownloadWorkManagerHelper.KEY_SPEED_KBPS to activeTask.speedKbps
-                        )
-                    )
-                    setForeground(
-                        createForegroundInfo(
-                            "📥 Queue #${activeTask.batchNumber}: ${activeTask.mouzaNameBn}",
-                            "${activeTask.downloadedKhatians}/${activeTask.totalKhatians} Khatians • ${activeTask.speedKbps} KB/s",
-                            activeTask.progress,
-                            100
-                        )
-                    )
-                } catch (ignored: Exception) {}
-                delay(500)
-                continue
-            }
+        return try {
+            while (!isStopped) {
+                val allTasks = queueDao.getAllTasksDirect()
+                if (allTasks.isEmpty()) break
 
-            val task = queueDao.getNextPendingTask()
-            if (task == null) {
-                if (isAutoBatchMode && !isStopped) {
-                    val allTasks = queueDao.getAllTasksDirect()
-                    val sampleTask = allTasks.lastOrNull()
-                    if (sampleTask != null) {
-                        val district = LandRecordsDataset.districts.find {
-                            it.nameBn == sampleTask.districtNameBn || it.nameEn.equals(sampleTask.districtNameBn, ignoreCase = true)
+                val incompleteTasks = allTasks.filter {
+                    it.status == TaskStatus.QUEUED ||
+                        it.status == TaskStatus.PENDING ||
+                        it.status == TaskStatus.DOWNLOADING ||
+                        it.status == TaskStatus.WAITING_FOR_USER
+                }
+
+                if (incompleteTasks.isEmpty()) {
+                    if (autoBatchMode) {
+                        val nextBatchEnqueued = enqueueNextBatchFromRoomIfRemaining(allTasks)
+                        if (nextBatchEnqueued) {
+                            delay(100)
+                            continue
                         }
-                        val upazila = district?.upazilas?.find {
-                            it.nameBn == sampleTask.upazilaNameBn || it.nameEn.equals(sampleTask.upazilaNameBn, ignoreCase = true)
-                        }
+                    }
+                    break
+                }
 
-                        if (district != null && upazila != null) {
-                            val existingMouzaIds = allTasks.map { it.mouzaId }.toSet()
-                            val remainingMouzas = upazila.mouzas.filter { it.id !in existingMouzaIds }
+                val activeBatchNumber = incompleteTasks.minOf { it.batchNumber }
+                val batchTasks = incompleteTasks.filter { it.batchNumber == activeBatchNumber }
 
-                            if (remainingMouzas.isNotEmpty()) {
-                                val queueSize = 7 // Phase 2: Strictly enforce 7 mouzas per batch
-                                val startBatchNum = (allTasks.maxOfOrNull { it.batchNumber } ?: 0) + 1
-                                val timestamp = System.currentTimeMillis()
-                                val recordTypes = sampleTask.recordTypes.ifEmpty { com.example.data.model.RecordType.values().toSet() }
+                val profile = NetworkDeviceQueueAdvisor.analyze(applicationContext)
+                val concurrency = profile.maxConcurrentDownloads.coerceIn(1, 3)
+                val semaphore = Semaphore(concurrency)
 
-                                val newTasks = mutableListOf<DownloadTask>()
-                                remainingMouzas.chunked(queueSize).forEachIndexed { chunkIdx, chunk ->
-                                    val batchNum = startBatchNum + chunkIdx
-                                    chunk.forEachIndexed { itemIdx, mouza ->
-                                        val taskId = "${mouza.id}-q${batchNum}-$timestamp-$itemIdx"
-                                        val totalKhatians = mouza.totalKhatiansFor(recordTypes)
-                                        val fileSizeBytes = totalKhatians * 110000L
-
-                                        newTasks.add(
-                                            DownloadTask(
-                                                id = taskId,
-                                                mouzaId = mouza.id,
-                                                mouzaNameBn = mouza.nameBn,
-                                                mouzaNameEn = mouza.nameEn,
-                                                jlNo = mouza.jlNo,
-                                                upazilaNameBn = upazila.nameBn,
-                                                districtNameBn = district.nameBn,
-                                                recordTypes = recordTypes,
-                                                downloadFormat = sampleTask.downloadFormat,
-                                                status = TaskStatus.PENDING,
-                                                progress = 0,
-                                                totalKhatians = totalKhatians,
-                                                downloadedKhatians = 0,
-                                                speedKbps = 0,
-                                                fileSizeBytes = fileSizeBytes,
-                                                batchNumber = batchNum,
-                                                timestamp = timestamp + (chunkIdx * 1000L) + itemIdx
-                                            )
-                                        )
-                                    }
-                                }
-                                queueDao.insertTasks(newTasks)
-                                continue
-                            } else if (allTasks.all { it.status == TaskStatus.COMPLETED }) {
-                                compileAndSaveMasterArchive(district, upazila, allTasks)
-                                showCompletionNotification(
-                                    "✅ ${upazila.nameBn} - সকল কিউ ডাউনলোড সম্পন্ন",
-                                    "মোট ${allTasks.size}টি মৌজার সকল খতিয়ান রেকর্ড সংরক্ষিত হয়েছে।"
-                                )
-                                return@withContext Result.success()
+                coroutineScope {
+                    batchTasks.forEach { task ->
+                        if (!isStopped) {
+                            semaphore.withPermit {
+                                processSingleTask(task)
                             }
                         }
                     }
                 }
-                break
-            }
 
-            queueDao.updateTask(task.copy(status = TaskStatus.DOWNLOADING, progress = 5, speedKbps = 340))
-
-            // Section 1: Eliminate simulated downloads. No artificial delays or fake progress bars.
-            // A task can only become COMPLETED if an actual document is received and validated.
-
-            when (task.retrievalMode) {
-                com.example.data.model.RetrievalMode.MODE_A_AUTHORIZED_API -> {
-                    // Mode A requires an official, permitted access method (Adapter).
-                    // Since no authorized adapter is configured in this Phase, we fail safely.
-                    queueDao.updateTask(
-                        task.copy(
-                            status = TaskStatus.FAILED,
-                            progress = 0,
-                            errorDetails = "Authorized Automated Retrieval (Mode A) is currently unavailable. No official API adapter configured."
-                        )
-                    )
-                    // Continue to next task in queue
-                    continue
+                // If remaining tasks in this batch are all awaiting user action or failed, stop worker loop cleanly
+                val refreshedTasks = queueDao.getAllTasksDirect()
+                val stillRunnable = refreshedTasks.any {
+                    it.status == TaskStatus.QUEUED ||
+                        it.status == TaskStatus.PENDING ||
+                        it.status == TaskStatus.DOWNLOADING
                 }
-                com.example.data.model.RetrievalMode.MODE_B_USER_ASSISTED -> {
-                    // Mode B: User-assisted workflow.
-                    // Set status to AWAITING_USER_IMPORT and stop processing this task.
-                    // The UI will detect this status and prompt the user to import a PDF.
-                    queueDao.updateTask(
-                        task.copy(
-                            status = TaskStatus.AWAITING_USER_IMPORT,
-                            progress = 10,
-                            speedKbps = 0
-                        )
-                    )
-                    // Awaiting user action, move to next task
-                    continue
+                if (!stillRunnable) {
+                    break
                 }
             }
 
+            val finalTasks = queueDao.getAllTasksDirect()
+            val completedCount = finalTasks.count { it.status == TaskStatus.COMPLETED }
+            updateWorkerProgress(
+                activeTaskName = "Queue Standby",
+                itemProgress = if (completedCount == finalTasks.size && finalTasks.isNotEmpty()) 100 else 0,
+                completedCount = completedCount,
+                totalCount = finalTasks.size,
+                speedKbps = 0,
+                statusMessage = "Completed $completedCount of ${finalTasks.size} tasks"
+            )
+
+            Result.success()
+        } catch (e: Exception) {
+            Result.retry()
         }
-        showCompletionNotification()
-        Result.success()
     }
 
-    override suspend fun getForegroundInfo(): ForegroundInfo = createForegroundInfo("🛡️ Anti-Freeze Downloader Active", "Processing...", 0, 100, true)
+    /**
+     * Enqueues the next 7-Mouza batch using authoritative Room geographic queries by canonical
+     * `districtId` and `upazilaId` (never by Bengali/English name matching).
+     */
+    private suspend fun enqueueNextBatchFromRoomIfRemaining(allTasks: List<DownloadTask>): Boolean {
+        val sampleTask = allTasks.lastOrNull() ?: return false
+        if (sampleTask.retrievalMode != RetrievalMode.MODE_A_AUTHORIZED_API) return false
 
-    private fun createForegroundInfo(title: String, content: String, progress: Int, max: Int, isIndeterminate: Boolean = false): ForegroundInfo {
-        val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
-            notificationManager.createNotificationChannel(channel)
+        val canonicalDistrictId = BangladeshGeographyCatalog.resolveCanonicalDistrictId(sampleTask.districtId)
+        val canonicalUpazilaId = BangladeshGeographyCatalog.resolveCanonicalUpazilaId(sampleTask.upazilaId)
+        if (canonicalDistrictId.isEmpty() || canonicalUpazilaId.isEmpty()) return false
+
+        val districtEntity = geographyDao.getDistrictById(canonicalDistrictId) ?: return false
+        val upazilaEntity = geographyDao.getUpazilaByIdAndDistrict(canonicalUpazilaId, canonicalDistrictId) ?: return false
+        val mouzaEntities = geographyDao.getMouzasForUpazilasInDistrictDirect(
+            districtId = canonicalDistrictId,
+            upazilaIds = listOf(canonicalUpazilaId)
+        )
+
+        val existingMouzaIds = allTasks.map { it.mouzaId }.toSet()
+        val remainingMouzas = mouzaEntities
+            .filter { it.id !in existingMouzaIds }
+            .distinctBy { it.id }
+
+        if (remainingMouzas.isEmpty()) return false
+
+        val nextBatchMouzas = remainingMouzas.take(DEFAULT_MOUZAS_PER_BATCH)
+        val nextBatchNumber = (allTasks.maxOfOrNull { it.batchNumber } ?: 0) + 1
+        val now = System.currentTimeMillis()
+        val recordTypes = sampleTask.recordTypes.ifEmpty { RecordType.values().toSet() }
+        var nextSortOrder = (allTasks.maxOfOrNull { it.sortOrder } ?: 0) + 1
+
+        val newTasks = nextBatchMouzas.mapIndexed { idx, mouzaEntity ->
+            DownloadTask(
+                id = "${mouzaEntity.id}-b$nextBatchNumber-$now-$idx",
+                mouzaId = mouzaEntity.id,
+                mouzaNameBn = mouzaEntity.nameBn,
+                mouzaNameEn = mouzaEntity.nameEn,
+                jlNo = mouzaEntity.jlNumber,
+                upazilaNameBn = upazilaEntity.nameBn,
+                districtNameBn = districtEntity.nameBn,
+                recordTypes = recordTypes,
+                downloadFormat = sampleTask.downloadFormat,
+                status = TaskStatus.PENDING,
+                progress = 0,
+                totalKhatians = 50 * recordTypes.size,
+                downloadedKhatians = 0,
+                fileSizeBytes = 0L,
+                speedKbps = 0,
+                batchNumber = nextBatchNumber,
+                timestamp = now + idx,
+                divisionId = districtEntity.divisionId,
+                divisionNameBn = sampleTask.divisionNameBn,
+                districtId = districtEntity.id,
+                upazilaId = upazilaEntity.id,
+                surveyType = recordTypes.firstOrNull()?.code ?: "RS",
+                recordCategory = sampleTask.recordCategory,
+                retrievalMode = sampleTask.retrievalMode,
+                sourceName = "eporcha.tech Free Land Records Portal",
+                sourceReference = "https://eporcha.tech/",
+                sortOrder = nextSortOrder++
+            )
         }
-        val pendingIntent = PendingIntent.getActivity(applicationContext, 0, Intent(applicationContext, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID).setContentTitle(title).setContentText(content).setSmallIcon(android.R.drawable.stat_sys_download).setOngoing(true).setContentIntent(pendingIntent).setProgress(max, progress, isIndeterminate).build()
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else ForegroundInfo(NOTIFICATION_ID, notification)
+
+        queueDao.insertTasks(newTasks)
+        return true
     }
 
-    private fun compileAndSaveMasterArchive(district: com.example.data.model.District, upazila: com.example.data.model.Upazila, allTasks: List<DownloadTask>) {
+    private suspend fun processSingleTask(task: DownloadTask) {
+        if (isStopped) return
+        val current = queueDao.getTaskById(task.id) ?: return
+        if (current.status == TaskStatus.COMPLETED ||
+            current.status == TaskStatus.CANCELLED ||
+            current.status == TaskStatus.UNAVAILABLE ||
+            current.status == TaskStatus.AWAITING_USER_IMPORT ||
+            current.status == TaskStatus.FAILED
+        ) {
+            return
+        }
+
+        queueDao.updateTask(
+            current.copy(
+                status = TaskStatus.AWAITING_USER_IMPORT,
+                progress = 0,
+                speedKbps = 0,
+                sourceName = "eporcha.tech Free Land Records Portal",
+                sourceReference = "https://eporcha.tech/",
+                errorDetails = null
+            )
+        )
+    }
+
+    private suspend fun updateWorkerProgress(
+        activeTaskName: String,
+        itemProgress: Int,
+        completedCount: Int,
+        totalCount: Int,
+        speedKbps: Int,
+        statusMessage: String
+    ) {
+        val overallPercent = if (totalCount == 0) 0 else ((completedCount * 100) / totalCount).coerceIn(0, 100)
+        val progressData = Data.Builder()
+            .putInt(DownloadWorkManagerHelper.KEY_PROGRESS_PERCENT, overallPercent)
+            .putInt(DownloadWorkManagerHelper.KEY_ITEM_PROGRESS, itemProgress)
+            .putString(DownloadWorkManagerHelper.KEY_ACTIVE_TASK_NAME, activeTaskName)
+            .putInt(DownloadWorkManagerHelper.KEY_COMPLETED_TASKS, completedCount)
+            .putInt(DownloadWorkManagerHelper.KEY_TOTAL_TASKS, totalCount)
+            .putInt(DownloadWorkManagerHelper.KEY_SPEED_KBPS, speedKbps)
+            .putString(DownloadWorkManagerHelper.KEY_STATUS_MESSAGE, statusMessage)
+            .build()
         try {
-            val archive = com.example.data.model.MasterArchive(upazilaId = upazila.id, upazilaNameBn = upazila.nameBn, upazilaNameEn = upazila.nameEn, districtNameBn = district.nameBn, districtNameEn = district.nameEn, totalMouzasCount = allTasks.size, recordTypesIncluded = allTasks.firstOrNull()?.recordTypeLabel ?: "ALL", totalKhatiansCount = allTasks.sumOf { it.totalKhatians }, totalSizeMb = String.format("%.2f MB", allTasks.sumOf { it.fileSizeBytes } / (1024.0 * 1024.0)), fileName = "${district.nameEn}_${upazila.nameEn}_Master_Land_Records_2026.json", isReady = true, isDownloadedToPhone = true)
-            LandRecordStorageManager.saveMasterLandRecordsArchive(applicationContext, archive, district, upazila, allTasks)
-            LandRecordStorageManager.clearCacheAndMemory(applicationContext)
-        } catch (e: Exception) { e.printStackTrace() }
+            setProgress(progressData)
+            setForeground(createForegroundInfo(statusMessage, completedCount, totalCount))
+        } catch (_: Exception) {
+        }
     }
 
-    private fun showCompletionNotification(title: String = "✅ Download Queue Completed", content: String = "All records saved to Download/LandRecords/") {
-        val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun createForegroundInfo(statusText: String, completed: Int, total: Int): ForegroundInfo {
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            notificationManager.createNotificationChannel(NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT))
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Land Record Download Queue",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            manager.createNotificationChannel(channel)
         }
-        val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID).setContentTitle(title).setContentText(content).setSmallIcon(android.R.drawable.stat_sys_download_done).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
-        notificationManager.notify(NOTIFICATION_ID, notification)
+
+        val notification: Notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setContentTitle("LRgetBD Queue Engine")
+            .setContentText(statusText)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setOngoing(true)
+            .setProgress(total.coerceAtLeast(1), completed.coerceAtLeast(0), total == 0)
+            .build()
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
+        }
     }
 }

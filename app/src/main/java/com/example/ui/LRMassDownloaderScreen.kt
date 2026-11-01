@@ -439,7 +439,7 @@ fun LRMassDownloaderScreen(
                     selectedUpazilaId = uiState.selectedUpazilaId,
                     onUpazilaSelected = {
                         viewModel.onUpazilaChanged(
-                            newUpazilaId = it,
+                            upazilaId = it,
                             autoStartQueues = uiState.isAutoQueueOnUpazilaSelect
                         )
                     },
@@ -3825,11 +3825,12 @@ fun DownloadTaskCard(task: DownloadTask) {
                         Text("Done", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = EmeraldDark))
                     }
                 }
-                TaskStatus.DOWNLOADING, TaskStatus.RUNNING, TaskStatus.AUTHENTICATING, TaskStatus.VERIFYING, TaskStatus.VALIDATING, TaskStatus.AWAITING_USER_IMPORT -> {
+                TaskStatus.DOWNLOADING, TaskStatus.RUNNING, TaskStatus.AUTHENTICATING, TaskStatus.VERIFYING, TaskStatus.VALIDATING, TaskStatus.IMPORTED, TaskStatus.VERIFIED, TaskStatus.AWAITING_USER_IMPORT -> {
                     val activeLabel = when (task.status) {
                         TaskStatus.AUTHENTICATING -> "Auth"
-                        TaskStatus.VERIFYING -> "Verifying"
+                        TaskStatus.VERIFYING, TaskStatus.VERIFIED -> "Verifying"
                         TaskStatus.VALIDATING -> "Validating"
+                        TaskStatus.IMPORTED -> "Imported"
                         TaskStatus.AWAITING_USER_IMPORT -> "Manual"
                         else -> "${task.progress}%"
                     }
@@ -3841,8 +3842,12 @@ fun DownloadTaskCard(task: DownloadTask) {
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
-                TaskStatus.PENDING, TaskStatus.WAITING_FOR_NETWORK -> {
-                    val pendingLabel = if (task.status == TaskStatus.WAITING_FOR_NETWORK) "Waiting Net" else "Pending"
+                TaskStatus.QUEUED, TaskStatus.PENDING, TaskStatus.WAITING_FOR_NETWORK -> {
+                    val pendingLabel = when (task.status) {
+                        TaskStatus.WAITING_FOR_NETWORK -> "Waiting Net"
+                        TaskStatus.QUEUED -> "Queued"
+                        else -> "Pending"
+                    }
                     Text(
                         text = pendingLabel,
                         style = MaterialTheme.typography.labelSmall.copy(color = Slate500),

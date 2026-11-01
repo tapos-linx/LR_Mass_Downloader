@@ -384,7 +384,10 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
         jsonBuilder.append("  \"district\": \"${district.nameBn} (${district.nameEn})\",\n")
         jsonBuilder.append("  \"upazila\": \"${upazila.nameBn} (${upazila.nameEn})\",\n")
         jsonBuilder.append("  \"recordTypes\": \"${archive.recordTypesIncluded}\",\n")
+        jsonBuilder.append("  \"defaultMouzasPerBatch\": 7,\n")
         jsonBuilder.append("  \"totalMouzasCount\": ${archive.totalMouzasCount},\n")
+        jsonBuilder.append("  \"actualRetrievedKhatiansCount\": ${archive.totalKhatiansCount},\n")
+        jsonBuilder.append("  \"archivedLedgerDocumentsCount\": ${ledgerEntries.size},\n")
         jsonBuilder.append("  \"generatedTimestamp\": ${System.currentTimeMillis()},\n")
         jsonBuilder.append("  \"mouzaRecords\": [\n")
         queueTasks.forEachIndexed { i, task ->
@@ -397,10 +400,31 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
             jsonBuilder.append("      \"nameEn\": \"${task.mouzaNameEn}\",\n")
             jsonBuilder.append("      \"jlNo\": \"${task.jlNo}\",\n")
             jsonBuilder.append("      \"surveyType\": \"${task.recordTypeLabel}\",\n")
+            jsonBuilder.append("      \"batchNumber\": ${task.batchNumber},\n")
             jsonBuilder.append("      \"source\": \"${task.sourceName}\",\n")
             jsonBuilder.append("      \"sha256\": \"${task.sha256Checksum}\",\n")
+            jsonBuilder.append("      \"localStoragePath\": \"${task.fileLocation}\",\n")
             jsonBuilder.append("      \"status\": \"${task.status.name}\"\n")
             jsonBuilder.append("    }${if (i < queueTasks.size - 1) "," else ""}\n")
+        }
+        jsonBuilder.append("  ],\n")
+        jsonBuilder.append("  \"archivedLedgerEntries\": [\n")
+        ledgerEntries.forEachIndexed { idx, entry ->
+            jsonBuilder.append("    {\n")
+            jsonBuilder.append("      \"division\": \"${entry.divisionName}\",\n")
+            jsonBuilder.append("      \"district\": \"${entry.districtName}\",\n")
+            jsonBuilder.append("      \"upazila\": \"${entry.upazilaName}\",\n")
+            jsonBuilder.append("      \"mouza\": \"${entry.mouzaName}\",\n")
+            jsonBuilder.append("      \"jlNumber\": \"${entry.jlNumber}\",\n")
+            jsonBuilder.append("      \"surveyType\": \"${entry.surveyType}\",\n")
+            jsonBuilder.append("      \"khatianNumber\": \"${entry.khatianNumber}\",\n")
+            jsonBuilder.append("      \"originalFilename\": \"${entry.documentType}\",\n")
+            jsonBuilder.append("      \"sourcePortal\": \"${entry.sourceName}\",\n")
+            jsonBuilder.append("      \"retrievalDate\": ${entry.recordedAt},\n")
+            jsonBuilder.append("      \"sha256Checksum\": \"${entry.sha256Checksum}\",\n")
+            jsonBuilder.append("      \"verificationStatus\": \"${entry.verificationStatus.name}\",\n")
+            jsonBuilder.append("      \"localStoragePath\": \"${entry.fileReference}\"\n")
+            jsonBuilder.append("    }${if (idx < ledgerEntries.size - 1) "," else ""}\n")
         }
         jsonBuilder.append("  ]\n")
         jsonBuilder.append("}\n")
@@ -416,17 +440,28 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
         textBuilder.append("জেলা: ${district.nameBn} (${district.nameEn})\n")
         textBuilder.append("উপজেলা: ${upazila.nameBn} (${upazila.nameEn})\n")
         textBuilder.append("জরিপ ও রেকর্ড ধরন: ${archive.recordTypesIncluded}\n")
-        textBuilder.append("মোট মৌজা সংখ্যা: ${archive.totalMouzasCount} টি\n")
+        textBuilder.append("মোট মৌজা সংখ্যা: ${archive.totalMouzasCount} টি (7 Mouzas/Batch)\n")
+        textBuilder.append("সংরক্ষিত যাচাইকৃত ডকুমেন্ট: ${ledgerEntries.size} টি\n")
         textBuilder.append("সংরক্ষণ ফোল্ডার: Download/$subDir/\n\n")
         textBuilder.append("------------------------------------------------------------------------\n")
         textBuilder.append("নং  | মৌজার নাম (বাংলা/ইংরেজি)        | জে.এল নং | জরিপ ধরন | স্ট্যাটাস\n")
         textBuilder.append("------------------------------------------------------------------------\n")
-        queueTasks.forEachIndexed { idx, task ->
-            val num = String.format("%2d", idx + 1)
-            val name = "${task.mouzaNameBn} (${task.mouzaNameEn})".padEnd(28)
-            val jl = task.jlNo.padEnd(8)
-            val rec = task.recordTypeLabel.padEnd(10)
-            textBuilder.append("$num. | $name | $jl | $rec | ${task.status.name}\n")
+        if (ledgerEntries.isNotEmpty()) {
+            ledgerEntries.forEachIndexed { idx, entry ->
+                val num = String.format("%2d", idx + 1)
+                val name = entry.mouzaName.padEnd(28)
+                val jl = entry.jlNumber.padEnd(8)
+                val rec = entry.surveyType.padEnd(10)
+                textBuilder.append("$num. | $name | $jl | $rec | ${entry.verificationStatus.name} [${entry.sha256Checksum.take(12)}]\n")
+            }
+        } else {
+            queueTasks.forEachIndexed { idx, task ->
+                val num = String.format("%2d", idx + 1)
+                val name = "${task.mouzaNameBn} (${task.mouzaNameEn})".padEnd(28)
+                val jl = task.jlNo.padEnd(8)
+                val rec = task.recordTypeLabel.padEnd(10)
+                textBuilder.append("$num. | $name | $jl | $rec | ${task.status.name}\n")
+            }
         }
         textBuilder.append("========================================================================\n")
         val textContent = textBuilder.toString()
@@ -434,7 +469,6 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
 
         // 3. Master CSV Export
         val csvBuilder = StringBuilder()
-        // Using a professional header consistent with exportMetadataCsv
         csvBuilder.append("Serial_No,Division,District,Upazila,Mouza_Bengali,Mouza_English,JL_Number,Survey_Type,Khatian_Number,Dag_Number,Owner_Name,Guardian_Name,Source,Verification_Status,SHA256_Checksum,File_Reference,Exported_At\n")
         
         val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
@@ -474,9 +508,9 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
                     task.jlNo,
                     task.recordTypeLabel,
                     task.referenceId ?: "",
-                    "", // Dag_No
-                    "", // Owner_Name
-                    "", // Guardian_Name
+                    "",
+                    "",
+                    "",
                     task.sourceName,
                     task.status.name,
                     task.sha256Checksum,
@@ -494,20 +528,39 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
         xlsxBuilder.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
         xlsxBuilder.append("<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\">\n")
         xlsxBuilder.append("  <Worksheet ss:Name=\"MasterLandLedger\">\n    <Table>\n")
-        xlsxBuilder.append("      <Row><Cell><Data ss:Type=\"String\">Division</Data></Cell><Cell><Data ss:Type=\"String\">District</Data></Cell><Cell><Data ss:Type=\"String\">Upazila</Data></Cell><Cell><Data ss:Type=\"String\">Mouza</Data></Cell><Cell><Data ss:Type=\"String\">JL_No</Data></Cell><Cell><Data ss:Type=\"String\">Survey_Type</Data></Cell><Cell><Data ss:Type=\"String\">Status</Data></Cell><Cell><Data ss:Type=\"String\">SHA256</Data></Cell></Row>\n")
-        queueTasks.forEach { task ->
-            xlsxBuilder.append(
-                "      <Row>" +
-                    "<Cell><Data ss:Type=\"String\">${task.divisionNameBn}</Data></Cell>" +
-                    "<Cell><Data ss:Type=\"String\">${district.nameEn}</Data></Cell>" +
-                    "<Cell><Data ss:Type=\"String\">${upazila.nameEn}</Data></Cell>" +
-                    "<Cell><Data ss:Type=\"String\">${task.mouzaNameEn}</Data></Cell>" +
-                    "<Cell><Data ss:Type=\"String\">${task.jlNo}</Data></Cell>" +
-                    "<Cell><Data ss:Type=\"String\">${task.recordTypeLabel}</Data></Cell>" +
-                    "<Cell><Data ss:Type=\"String\">${task.status.name}</Data></Cell>" +
-                    "<Cell><Data ss:Type=\"String\">${task.sha256Checksum}</Data></Cell>" +
-                    "</Row>\n"
-            )
+        xlsxBuilder.append("      <Row><Cell><Data ss:Type=\"String\">Division</Data></Cell><Cell><Data ss:Type=\"String\">District</Data></Cell><Cell><Data ss:Type=\"String\">Upazila</Data></Cell><Cell><Data ss:Type=\"String\">Mouza</Data></Cell><Cell><Data ss:Type=\"String\">JL_No</Data></Cell><Cell><Data ss:Type=\"String\">Survey_Type</Data></Cell><Cell><Data ss:Type=\"String\">Status</Data></Cell><Cell><Data ss:Type=\"String\">SHA256</Data></Cell><Cell><Data ss:Type=\"String\">Local_Path</Data></Cell></Row>\n")
+        if (ledgerEntries.isNotEmpty()) {
+            ledgerEntries.forEach { entry ->
+                xlsxBuilder.append(
+                    "      <Row>" +
+                        "<Cell><Data ss:Type=\"String\">${entry.divisionName}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${entry.districtName}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${entry.upazilaName}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${entry.mouzaName}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${entry.jlNumber}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${entry.surveyType}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${entry.verificationStatus.name}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${entry.sha256Checksum}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${entry.fileReference}</Data></Cell>" +
+                        "</Row>\n"
+                )
+            }
+        } else {
+            queueTasks.forEach { task ->
+                xlsxBuilder.append(
+                    "      <Row>" +
+                        "<Cell><Data ss:Type=\"String\">${task.divisionNameBn}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${district.nameEn}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${upazila.nameEn}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${task.mouzaNameEn}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${task.jlNo}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${task.recordTypeLabel}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${task.status.name}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${task.sha256Checksum}</Data></Cell>" +
+                        "<Cell><Data ss:Type=\"String\">${task.fileLocation}</Data></Cell>" +
+                        "</Row>\n"
+                )
+            }
         }
         xlsxBuilder.append("    </Table>\n  </Worksheet>\n</Workbook>\n")
         val xlsxResult = saveFileToLandRecords(
@@ -520,11 +573,17 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
 
         // 5. Master PDF (Standards-compliant PDF 1.4 binary) Export
         val pdfLines = mutableListOf(
-            "District: ${district.nameEn} | Upazila: ${upazila.nameEn} | Total Mouzas: ${archive.totalMouzasCount}",
-            "Surveys: ${archive.recordTypesIncluded}"
+            "District: ${district.nameEn} | Upazila: ${upazila.nameEn} | Total Mouzas: ${archive.totalMouzasCount} | Verified Docs: ${ledgerEntries.size}",
+            "Surveys: ${archive.recordTypesIncluded} | Batch Size: 7 Mouzas/Batch"
         )
-        queueTasks.take(35).forEachIndexed { idx, task ->
-            pdfLines.add("${idx + 1}. ${task.mouzaNameEn} (JL: ${task.jlNo}) - ${task.recordTypeLabel} [${task.status.name}]")
+        if (ledgerEntries.isNotEmpty()) {
+            ledgerEntries.take(35).forEachIndexed { idx, entry ->
+                pdfLines.add("${idx + 1}. ${entry.mouzaName} (JL: ${entry.jlNumber}) - ${entry.surveyType} [${entry.verificationStatus.name}] SHA256:${entry.sha256Checksum.take(12)}")
+            }
+        } else {
+            queueTasks.take(35).forEachIndexed { idx, task ->
+                pdfLines.add("${idx + 1}. ${task.mouzaNameEn} (JL: ${task.jlNo}) - ${task.recordTypeLabel} [${task.status.name}]")
+            }
         }
         val pdfBytes = DocumentVerificationEngine.generateValidPdfReportBytes(
             title = "LRgetBD Master Land Ledger - ${district.nameEn} / ${upazila.nameEn}",

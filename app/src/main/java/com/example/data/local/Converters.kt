@@ -1,8 +1,6 @@
 package com.example.data.local
 
 import androidx.room.TypeConverter
-import com.example.data.geography.GeoVerificationStatus
-import com.example.data.geography.SurveyAvailabilityStatus
 import com.example.data.ledger.DocumentVerificationStatus
 import com.example.data.model.DownloadFormat
 import com.example.data.model.RecordType
@@ -43,20 +41,6 @@ class Converters {
     @TypeConverter
     fun toRetrievalMode(value: String): RetrievalMode =
         runCatching { RetrievalMode.valueOf(value) }.getOrDefault(RetrievalMode.MODE_A_AUTHORIZED_API)
-
-    @TypeConverter
-    fun fromGeoVerificationStatus(value: GeoVerificationStatus): String = value.name
-
-    @TypeConverter
-    fun toGeoVerificationStatus(value: String): GeoVerificationStatus =
-        runCatching { GeoVerificationStatus.valueOf(value) }.getOrDefault(GeoVerificationStatus.VERIFIED)
-
-    @TypeConverter
-    fun fromSurveyAvailabilityStatus(value: SurveyAvailabilityStatus): String = value.name
-
-    @TypeConverter
-    fun toSurveyAvailabilityStatus(value: String): SurveyAvailabilityStatus =
-        runCatching { SurveyAvailabilityStatus.valueOf(value) }.getOrDefault(SurveyAvailabilityStatus.UNKNOWN)
 
     @TypeConverter
     fun fromDocumentVerificationStatus(value: DocumentVerificationStatus): String = value.name
