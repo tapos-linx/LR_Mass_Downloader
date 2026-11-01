@@ -951,10 +951,62 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
     }
 
     /**
+     * Homepage 1-Click Queue Generator:
+     * Automatically selects all Mouzas in the active Upazila(s) (or entire District if no Upazila is selected yet),
+     * generates the 7-Mouza batch plan, and enqueues all batches into the active download queue.
+     */
+    fun generateQueueFromHomepage(context: Context? = null) {
+        if (currentMouzas.isEmpty()) {
+            selectAllUpazilasInDistrict(autoSelectAllMouzas = true)
+        } else if (_uiState.value.selectedMouzaIds.isEmpty()) {
+            selectAllMouzas()
+        }
+        queueSelectedDownloads()
+        val totalMouzasCount = _uiState.value.selectedMouzaIds.size.coerceAtLeast(currentMouzas.size)
+        val batchesCount = totalBatches.coerceAtLeast(1)
+        val msg = "কিউ তৈরি সম্পন্ন: $totalMouzasCount টি মৌজা • $batchesCount টি ব্যাচ (৭টি মৌজা/ব্যাচ)"
+        _uiState.value = _uiState.value.copy(cacheNotificationMessage = msg)
+        if (context != null) {
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Homepage 1-Click Download All:
+     * Selects all Mouzas for the active Upazila/District, generates all 7-Mouza queues,
+     * unpauses/resumes all active & pending downloads, and exports completed records to Phone Memory.
+     */
+    fun downloadAllFromHomepage(context: Context? = null) {
+        if (currentMouzas.isEmpty()) {
+            selectAllUpazilasInDistrict(autoSelectAllMouzas = true)
+        } else {
+            selectAllMouzas()
+        }
+        if (_uiState.value.isPaused) {
+            togglePauseQueue()
+        }
+        queueSelectedDownloads()
+        startSequentialQueueCoordinator()
+        if (context != null && (savedRecords.value.isNotEmpty() || _uiState.value.masterArchive != null)) {
+            downloadAllSessionRecordsToPhone(context)
+        }
+        val totalMouzasCount = _uiState.value.selectedMouzaIds.size.coerceAtLeast(currentMouzas.size)
+        val batchesCount = totalBatches.coerceAtLeast(1)
+        val msg = "সব ডাউনলোড শুরু হয়েছে: $totalMouzasCount টি মৌজা ($batchesCount টি ব্যাচ) ➔ Phone Memory/Download/LandRecords"
+        _uiState.value = _uiState.value.copy(cacheNotificationMessage = msg)
+        if (context != null) {
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
      * Partitions all selected Mouzas into duplicate-free 7-Mouza batches
      * (Batch 1: Mouza 1–7, Batch 2: Mouza 8–14, etc.) and executes them sequentially.
      */
     fun queueSelectedDownloads() {
+        if (currentMouzas.isEmpty()) {
+            selectAllUpazilasInDistrict(autoSelectAllMouzas = true)
+        }
         val state = _uiState.value
         val district = currentDistrict ?: return
         val mouzasPool = currentMouzas
@@ -1685,6 +1737,33 @@ class LRDownloaderViewModel(application: Application) : AndroidViewModel(applica
             downloadMasterFileToPhone(context)
 
             Toast.makeText(context, "All ${completedTasks.size} records exported to Downloads!", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * Dedicated trigger for Section 9 CSV Metadata Export.
+     */
+    fun exportMasterLedgerCsvOnly(context: Context) {
+        val upazila = currentUpazila ?: return
+        val district = currentDistrict ?: return
+
+        viewModelScope.launch {
+            val ledgerRows = masterLandLedgerDao.getAllEntriesDirect()
+            if (ledgerRows.isEmpty() && _uiState.value.queue.none { it.status == TaskStatus.COMPLETED }) {
+                Toast.makeText(context, "No metadata available to export yet.", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val result = LandRecordStorageManager.exportMetadataCsv(
+                context = context,
+                district = district,
+                upazila = upazila,
+                ledgerEntries = ledgerRows
+            )
+
+            val msg = "Metadata CSV exported to: ${result.primaryDisplayPath}"
+            _uiState.value = _uiState.value.copy(cacheNotificationMessage = msg)
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
         }
     }
 

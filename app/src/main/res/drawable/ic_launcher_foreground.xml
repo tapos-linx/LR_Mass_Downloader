@@ -4,11 +4,19 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Centered bold 'LR' text style vector for the logo fallback -->
+    <!-- Document Backdrop -->
     <path
-        android:fillColor="#2DD4BF"
-        android:pathData="M34,44h6v20h12v6H34V44z M64,44h10c3.3,0 6,2.7 6,6v4c0,2.2 -1.2,4.1 -3,5.1l4,8.9h-6.6l-3.5-8h-0.9v8H64V44z M70,50v6h4c1.1,0 2,-0.9 2,-2v-2c0,-1.1 -0.9,-2 -2,-2H70z"/>
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,24h32l16,16v44c0,2.2 -1.8,4 -4,4H34c-2.2,0 -4,-1.8 -4,-4V28c0,-2.2 1.8,-4 4,-4z" />
     <path
-        android:fillColor="#BE185D"
-        android:pathData="M40,64l-6,6l18,0l0,-6z M70,56l10,0l0,-6l-10,0z"/>
+        android:fillColor="#E2E8F0"
+        android:pathData="M66,24v16h16z" />
+    <!-- Shield (Trust) -->
+    <path
+        android:fillColor="#0D9488"
+        android:pathData="M54,48l-12,4v8c0,7.4 5.1,14.3 12,16c6.9,-1.7 12,-8.6 12,-16v-8l-12,-4z" />
+    <!-- Download Arrow -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,64l-5,-5h3v-6h4v6h3l-5,5z" />
 </vector>

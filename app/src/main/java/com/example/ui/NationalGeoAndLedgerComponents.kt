@@ -123,7 +123,9 @@ fun NationalGeographicExplorerCard(
     onOpenPdfImportDialog: () -> Unit,
     onOpenGeoUpdateDialog: () -> Unit,
     onOpenMasterLedger: () -> Unit,
-    onOpenUserAssistedBrowser: () -> Unit
+    onOpenUserAssistedBrowser: () -> Unit,
+    onGenerateQueue: () -> Unit = {},
+    onDownloadAll: () -> Unit = {}
 ) {
     ElevatedCard(
         shape = RoundedCornerShape(24.dp),
@@ -212,6 +214,66 @@ fun NationalGeographicExplorerCard(
                 GeoMetricChip("Verified Mouzas", "${coverageSummary.totalVerifiedMouzas}", EmeraldDark, EmeraldContainer)
                 GeoMetricChip("Selected Mouzas", "${coverageSummary.selectedMouzasCount}", AmberDark, AmberContainer)
                 GeoMetricChip("Archived Docs", "$archivedDocsCount", BlueAccent, BlueContainer)
+            }
+
+            // Top-of-Homepage Primary Action Row: Queue Generator & Download All
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = onGenerateQueue,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BlueAccent,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp, horizontal = 12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 50.dp)
+                        .testTag("card_top_queue_generator_button")
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text(
+                            text = "Queue Generator",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black)
+                        )
+                        Text(
+                            text = "কিউ জেনারেটর (7/Batch)",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onDownloadAll,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldPrimary,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp, horizontal = 12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 50.dp)
+                        .testTag("card_top_download_all_button")
+                ) {
+                    Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text(
+                            text = "Download All",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black)
+                        )
+                        Text(
+                            text = "সব ডাউনলোড করুন",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, color = Color.White.copy(alpha = 0.9f))
+                        )
+                    }
+                }
             }
 
             // Step 1: Select Division (All 8 Divisions of Bangladesh)

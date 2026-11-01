@@ -434,24 +434,56 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
 
         // 3. Master CSV Export
         val csvBuilder = StringBuilder()
-        csvBuilder.append("SL,Division,District,Upazila,Mouza_Bn,Mouza_En,JL_No,Survey_Type,Khatian_No,Dag_No,Owner_Name,Guardian_Name,Source,Verification_Status,SHA256_Checksum,File_Reference\n")
+        // Using a professional header consistent with exportMetadataCsv
+        csvBuilder.append("Serial_No,Division,District,Upazila,Mouza_Bengali,Mouza_English,JL_Number,Survey_Type,Khatian_Number,Dag_Number,Owner_Name,Guardian_Name,Source,Verification_Status,SHA256_Checksum,File_Reference,Exported_At\n")
+        
+        val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+
         if (ledgerEntries.isNotEmpty()) {
             ledgerEntries.forEachIndexed { idx, entry ->
-                csvBuilder.append(
-                    "${idx + 1},\"${entry.divisionName}\",\"${entry.districtName}\",\"${entry.upazilaName}\"," +
-                        "\"${entry.mouzaName}\",\"${entry.mouzaName}\",\"${entry.jlNumber}\",\"${entry.surveyType}\"," +
-                        "\"${entry.khatianNumber}\",\"${entry.dagNumber}\",\"${entry.ownerName}\",\"${entry.guardianName}\"," +
-                        "\"${entry.sourceName}\",\"${entry.verificationStatus.name}\",\"${entry.sha256Checksum}\",\"${entry.fileReference}\"\n"
-                )
+                val row = listOf(
+                    (idx + 1).toString(),
+                    entry.divisionName,
+                    entry.districtName,
+                    entry.upazilaName,
+                    entry.mouzaName,
+                    entry.mouzaName,
+                    entry.jlNumber,
+                    entry.surveyType,
+                    entry.khatianNumber,
+                    entry.dagNumber,
+                    entry.ownerName,
+                    entry.guardianName,
+                    entry.sourceName,
+                    entry.verificationStatus.name,
+                    entry.sha256Checksum,
+                    entry.fileReference,
+                    timestamp
+                ).joinToString(",") { csvEscape(it) }
+                csvBuilder.append(row).append("\n")
             }
         } else {
             queueTasks.forEachIndexed { idx, task ->
-                csvBuilder.append(
-                    "${idx + 1},\"${task.divisionNameBn}\",\"${district.nameEn}\",\"${upazila.nameEn}\"," +
-                        "\"${task.mouzaNameBn}\",\"${task.mouzaNameEn}\",\"${task.jlNo}\",\"${task.recordTypeLabel}\"," +
-                        "\"${task.referenceId ?: ""}\",\"\",\"\",\"\"," +
-                        "\"${task.sourceName}\",\"${task.status.name}\",\"${task.sha256Checksum}\",\"${task.fileLocation}\"\n"
-                )
+                val row = listOf(
+                    (idx + 1).toString(),
+                    task.divisionNameBn,
+                    district.nameEn,
+                    upazila.nameEn,
+                    task.mouzaNameBn,
+                    task.mouzaNameEn,
+                    task.jlNo,
+                    task.recordTypeLabel,
+                    task.referenceId ?: "",
+                    "", // Dag_No
+                    "", // Owner_Name
+                    "", // Guardian_Name
+                    task.sourceName,
+                    task.status.name,
+                    task.sha256Checksum,
+                    task.fileLocation,
+                    timestamp
+                ).joinToString(",") { csvEscape(it) }
+                csvBuilder.append(row).append("\n")
             }
         }
         val csvContent = csvBuilder.toString()
@@ -520,6 +552,63 @@ SHA-256 চেকসাম: ${pdfSaved.sha256Checksum}
             isPublicDownloads = jsonResult.isPublicDownloads,
             primaryDisplayPath = jsonResult.primaryDisplayPath
         )
+    }
+
+    /**
+     * Explicitly exports only the Master Ledger metadata into a professional CSV file.
+     * Uses robust escaping for commas and quotes to ensure compatibility with Excel/Sheets.
+     */
+    fun exportMetadataCsv(
+        context: Context,
+        district: District,
+        upazila: Upazila,
+        ledgerEntries: List<MasterLedgerEntryEntity>
+    ): SavedFileResult {
+        val safeUpazilaName = sanitizeSegment(upazila.nameEn)
+        val fileName = "${sanitizeSegment(district.nameEn)}_${safeUpazilaName}_Master_Ledger_Metadata_${System.currentTimeMillis()}.csv"
+        val subDir = "$LAND_RECORDS_SUBDIR/$LRGETBD_ROOT_SUBDIR/${sanitizeSegment(district.divisionId)}/${sanitizeSegment(district.nameEn)}/$safeUpazilaName/Master_Ledger"
+
+        val csvBuilder = StringBuilder()
+        // Professional Header for external analysis
+        csvBuilder.append("Serial_No,Division,District,Upazila,Mouza_Bengali,Mouza_English,JL_Number,Survey_Type,Khatian_Number,Dag_Number,Owner_Name,Guardian_Name,Document_Type,Source,Verification_Status,SHA256_Checksum,File_Reference,Exported_At\n")
+        
+        val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+
+        ledgerEntries.forEachIndexed { idx, entry ->
+            val row = listOf(
+                (idx + 1).toString(),
+                entry.divisionName,
+                entry.districtName,
+                entry.upazilaName,
+                entry.mouzaName,
+                entry.mouzaName, // Using name for both as fallback if split name is missing
+                entry.jlNumber,
+                entry.surveyType,
+                entry.khatianNumber,
+                entry.dagNumber,
+                entry.ownerName,
+                entry.guardianName,
+                entry.documentType,
+                entry.sourceName,
+                entry.verificationStatus.name,
+                entry.sha256Checksum,
+                entry.fileReference,
+                timestamp
+            ).joinToString(",") { csvEscape(it) }
+            csvBuilder.append(row).append("\n")
+        }
+        
+        return saveFileToLandRecords(context, fileName, csvBuilder.toString(), "text/csv", subDir)
+    }
+
+    private fun csvEscape(value: String?): String {
+        if (value == null) return "\"\""
+        val escaped = value.replace("\"", "\"\"")
+        return if (escaped.contains(",") || escaped.contains("\"") || escaped.contains("\n")) {
+            "\"$escaped\""
+        } else {
+            "\"$escaped\"" // Always quoting for consistency
+        }
     }
 
     /**

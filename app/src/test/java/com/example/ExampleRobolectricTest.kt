@@ -342,4 +342,30 @@ class ExampleRobolectricTest {
         assertEquals(1, parsed.mouzas.size)
         assertEquals(1, parsed.errors.size) // Second identical entry caught as duplicate
     }
+    @Test
+    fun testMetadataCsvExport() = runTest {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val viewModel = LRDownloaderViewModel(app)
+        
+        // 1. Setup a mock environment
+        val district = com.example.data.model.LandRecordsDataset.districts.first()
+        val upazila = district.upazilas.first()
+        
+        viewModel.onDistrictChanged(district.id)
+        viewModel.onUpazilaChanged(upazila.id, autoStartQueues = false)
+        ShadowLooper.idleMainLooper()
+        
+        // 2. Trigger the CSV export logic
+        val ledgerRows = emptyList<com.example.data.ledger.MasterLedgerEntryEntity>()
+        val result = com.example.data.local.LandRecordStorageManager.exportMetadataCsv(
+            context = app,
+            district = district,
+            upazila = upazila,
+            ledgerEntries = ledgerRows
+        )
+        
+        assertNotNull(result)
+        assertTrue(result.primaryDisplayPath.contains("Metadata_Export.csv"))
+        assertTrue(result.fileSizeBytes > 50) // At least the headers should be there
+    }
 }

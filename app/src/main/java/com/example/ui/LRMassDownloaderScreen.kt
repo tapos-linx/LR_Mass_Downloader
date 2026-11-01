@@ -52,6 +52,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -250,7 +251,9 @@ fun LRMassDownloaderScreen(
                             downloadingCount = downloadingTasks,
                             failedCount = failedTasks,
                             onOpenQueueStatus = { viewModel.navigateToScreen(AppScreen.QUEUE_STATUS) },
-                            onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) }
+                            onOpenApkInfo = { viewModel.setShowApkInfoDialog(true) },
+                            onGenerateQueue = { viewModel.generateQueueFromHomepage(context) },
+                            onDownloadAll = { viewModel.downloadAllFromHomepage(context) }
                         )
                         // Global Progress Bar: Indicates total percentage of completed downloads across the active queue
                         AnimatedVisibility(visible = totalTasks > 0 && completedTasks < totalTasks) {
@@ -385,6 +388,9 @@ fun LRMassDownloaderScreen(
                         },
                         onOpenLedger = {
                             viewModel.setShowLedgerDialog(true)
+                        },
+                        onExportCsv = {
+                            viewModel.exportMasterLedgerCsvOnly(context)
                         }
                     )
                 }
@@ -417,7 +423,9 @@ fun LRMassDownloaderScreen(
                     onOpenPdfImportDialog = { viewModel.setShowPdfImportDialog(true) },
                     onOpenGeoUpdateDialog = { viewModel.setShowGeoUpdateDialog(true) },
                     onOpenMasterLedger = { viewModel.setShowHistoryDialog(true) },
-                    onOpenUserAssistedBrowser = { viewModel.openUserAssistedBrowserForTask(context) }
+                    onOpenUserAssistedBrowser = { viewModel.openUserAssistedBrowserForTask(context) },
+                    onGenerateQueue = { viewModel.generateQueueFromHomepage(context) },
+                    onDownloadAll = { viewModel.downloadAllFromHomepage(context) }
                 )
             }
 
@@ -553,7 +561,8 @@ fun LRMassDownloaderScreen(
             onDismiss = { viewModel.setShowHistoryDialog(false) },
             onDelete = { viewModel.deleteSavedRecord(it) },
             onClearAll = { viewModel.clearAllSavedRecords() },
-            onExportAll = { viewModel.downloadAllSessionRecordsToPhone(context) }
+            onExportAll = { viewModel.downloadAllSessionRecordsToPhone(context) },
+            onExportCsv = { viewModel.exportMasterLedgerCsvOnly(context) }
         )
     }
 
@@ -849,7 +858,8 @@ fun MasterArchiveCard(
     onOpenDownloadsFolder: () -> Unit,
     onSaveCopyAs: () -> Unit,
     onShareFile: () -> Unit,
-    onOpenLedger: () -> Unit
+    onOpenLedger: () -> Unit,
+    onExportCsv: () -> Unit = {}
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -1090,6 +1100,25 @@ fun MasterArchiveCard(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("View Ledger in App", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
+
+                    OutlinedButton(
+                        onClick = onExportCsv,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White
+                        ),
+                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(AmberAccent)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("export_csv_metadata_button")
+                    ) {
+                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Export Record Metadata (CSV)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -1299,7 +1328,9 @@ fun GovTechHeader(
     onOpenKhotiyanForm: () -> Unit = {},
     onOpenQueueStatus: () -> Unit = {},
     onOpenSavedRecords: () -> Unit = {},
-    onOpenApkInfo: () -> Unit
+    onOpenApkInfo: () -> Unit,
+    onGenerateQueue: () -> Unit = {},
+    onDownloadAll: () -> Unit = {}
 ) {
     Surface(
         color = LogoNavy,
@@ -1308,8 +1339,10 @@ fun GovTechHeader(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Top Row: Logo, Brand and Download APK button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1317,7 +1350,8 @@ fun GovTechHeader(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f, fill = false)
                 ) {
                     Box(
                         modifier = Modifier
@@ -1388,70 +1422,136 @@ fun GovTechHeader(
                     }
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // APK Releases & Direct Installer Button
+                OutlinedButton(
+                    onClick = onOpenApkInfo,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color.White,
+                        containerColor = EmeraldDark.copy(alpha = 0.7f)
+                    ),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(AmberAccent.copy(alpha = 0.7f))
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .testTag("download_apk_button")
+                        .testTag("open_apk_download_button")
                 ) {
-                    // APK Releases & Direct Installer Button
-                    OutlinedButton(
-                        onClick = onOpenApkInfo,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color.White,
-                            containerColor = EmeraldDark.copy(alpha = 0.7f)
-                        ),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(
-                            brush = androidx.compose.ui.graphics.SolidColor(AmberAccent.copy(alpha = 0.7f))
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .testTag("download_apk_button")
-                            .testTag("open_apk_download_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudDownload,
-                            contentDescription = "Download APK",
-                            modifier = Modifier.size(16.dp),
-                            tint = AmberAccent
-                        )
-                        Text(
-                            text = "Download APK",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.CloudDownload,
+                        contentDescription = "Download APK",
+                        modifier = Modifier.size(16.dp),
+                        tint = AmberAccent
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "APK",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
             // Zone 1: Real-Time Stats Overview (Hero Header)
-            Row(
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                maxItemsInEachRow = 4
             ) {
+                val cardModifier = Modifier.weight(1f).widthIn(min = 70.dp)
                 StatCard(
                     title = "মোট টাস্ক",
                     count = queueCount,
                     containerColor = LogoNavy.copy(alpha = 0.4f),
-                    modifier = Modifier.weight(1f)
+                    modifier = cardModifier
                 )
                 StatCard(
                     title = "সম্পন্ন",
                     count = completedCount,
                     containerColor = EmeraldDark.copy(alpha = 0.5f),
-                    modifier = Modifier.weight(1f)
+                    modifier = cardModifier
                 )
                 StatCard(
                     title = "প্রসেসিং",
                     count = downloadingCount,
                     containerColor = BlueAccent.copy(alpha = 0.4f),
-                    modifier = Modifier.weight(1f)
+                    modifier = cardModifier
                 )
                 StatCard(
                     title = "ব্যর্থ",
                     count = failedCount,
                     containerColor = if (failedCount > 0) RoseDark.copy(alpha = 0.6f) else LogoNavy.copy(alpha = 0.3f),
-                    modifier = Modifier.weight(1f)
+                    modifier = cardModifier
                 )
+            }
+
+            // Homepage Sticky Primary Actions: Queue Generator & Download All
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onGenerateQueue,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AmberAccent,
+                        contentColor = Slate900
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("homepage_queue_generator_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FormatListNumbered,
+                        contentDescription = "Queue Generator",
+                        modifier = Modifier.size(18.dp),
+                        tint = Slate900
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Queue Gen",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Black,
+                            color = Slate900,
+                            fontSize = 12.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Button(
+                    onClick = onDownloadAll,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldPrimary,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("homepage_download_all_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Download All",
+                        modifier = Modifier.size(18.dp),
+                        tint = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Download All",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Black,
+                            color = Color.White,
+                            fontSize = 12.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -1474,9 +1574,14 @@ fun StatCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                color = Color.White.copy(alpha = 0.8f)
+                text = title.uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp
+                ),
+                color = Color.White.copy(alpha = 0.85f),
+                textAlign = TextAlign.Center
             )
             Text(
                 text = count.toString(),
@@ -3814,7 +3919,8 @@ fun SavedRecordsDialog(
     onDismiss: () -> Unit,
     onDelete: (String) -> Unit,
     onClearAll: () -> Unit,
-    onExportAll: () -> Unit
+    onExportAll: () -> Unit,
+    onExportCsv: () -> Unit = {}
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -3941,14 +4047,26 @@ fun SavedRecordsDialog(
         dismissButton = {
             val context = androidx.compose.ui.platform.LocalContext.current
             if (records.isNotEmpty()) {
-                OutlinedButton(
-                    onClick = onExportAll,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldDark),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Export All to Phone Memory")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onExportCsv,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = BlueAccent),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("CSV Metadata")
+                    }
+
+                    OutlinedButton(
+                        onClick = onExportAll,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldDark),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Export All")
+                    }
                 }
             }
         },
